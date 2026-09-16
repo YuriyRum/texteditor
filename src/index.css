@@ -16,6 +16,47 @@
 /* Tiptap Rich Text Editor Styling */
 .ProseMirror {
   outline: none !important;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-width: 100% !important;
+  box-sizing: border-box;
+}
+
+.ProseMirror * {
+  max-width: 100% !important;
+  box-sizing: border-box;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.ProseMirror img {
+  max-width: 100% !important;
+  height: auto !important;
+  object-fit: contain;
+}
+
+.ProseMirror p,
+.ProseMirror div,
+.ProseMirror span,
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3,
+.ProseMirror h4,
+.ProseMirror h5,
+.ProseMirror h6,
+.ProseMirror li,
+.ProseMirror blockquote {
+  overflow-wrap: break-word;
+  word-break: break-word;
+  max-width: 100%;
+}
+
+.ProseMirror pre,
+.ProseMirror code {
+  white-space: pre-wrap !important;
+  overflow-wrap: break-word !important;
+  word-break: break-word !important;
+  max-width: 100% !important;
 }
 
 .ProseMirror p.is-editor-empty:first-child::before {

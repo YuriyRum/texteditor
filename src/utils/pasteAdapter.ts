@@ -92,7 +92,30 @@ export function adaptPastedEmailHtml(html: string): string {
     // Clean mso- inline properties that might clutter inline CSS
     styleAttr = styleAttr.replace(/mso-[^;]+;?/gi, '');
 
+    // Remove or constrain fixed inline width/min-width declarations that exceed container
+    styleAttr = styleAttr.replace(/(?:^|;\s*)(?:width|min-width)\s*:\s*[^;]+;?/gi, (match) => {
+      // Keep width: 100% or percentages
+      if (match.includes('%')) return match;
+      return ' max-width: 100%; ';
+    });
+
+    // Replace white-space: nowrap with pre-wrap / normal
+    styleAttr = styleAttr.replace(/white-space\s*:\s*nowrap;?/gi, 'white-space: pre-wrap; word-break: break-word; ');
+
     el.setAttribute('style', styleAttr.trim());
+  });
+
+  // Ensure all block elements wrap properly
+  const allElements = doc.querySelectorAll('*');
+  allElements.forEach((el) => {
+    const tagName = el.tagName.toLowerCase();
+    if (['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'td', 'th', 'span', 'li'].includes(tagName)) {
+      let currentStyle = el.getAttribute('style') || '';
+      if (!currentStyle.includes('overflow-wrap')) {
+        currentStyle += ' overflow-wrap: break-word; word-break: break-word;';
+      }
+      el.setAttribute('style', currentStyle.trim());
+    }
   });
 
   // Ensure pasted tables are correctly styled and visible
@@ -103,9 +126,9 @@ export function adaptPastedEmailHtml(html: string): string {
     table.setAttribute('cellspacing', '0');
 
     let tableStyle = table.getAttribute('style') || '';
-    if (!tableStyle.includes('border-collapse')) {
-      tableStyle += ' border-collapse: collapse; width: 100%; border: 1px solid #cbd5e1; margin: 12px 0;';
-    }
+    // Strip fixed width from table style if present
+    tableStyle = tableStyle.replace(/(?:^|;\s*)width\s*:\s*[^;]+;?/gi, '');
+    tableStyle += ' border-collapse: collapse; width: 100%; max-width: 100%; table-layout: auto; word-break: break-word; border: 1px solid #cbd5e1; margin: 12px 0;';
     table.setAttribute('style', tableStyle.trim());
 
     const cells = table.querySelectorAll('th, td');
@@ -119,6 +142,9 @@ export function adaptPastedEmailHtml(html: string): string {
       }
       if (!cellStyle.includes('text-align')) {
         cellStyle += ' text-align: left;';
+      }
+      if (!cellStyle.includes('word-break')) {
+        cellStyle += ' word-break: break-word; overflow-wrap: break-word;';
       }
       cell.setAttribute('style', cellStyle.trim());
     });
