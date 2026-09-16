@@ -178,8 +178,8 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
     content: initialContent,
     editorProps: {
       attributes: {
-        class: `outline-none text-slate-800 text-sm leading-relaxed p-6 bg-white min-h-[${minHeight}]`,
-        style: `min-height: ${minHeight};`,
+        class: `outline-none text-slate-800 text-sm leading-relaxed p-6 bg-white min-h-full flex-1 w-full`,
+        style: `min-height: 100%;`,
       },
       transformPastedHTML(html) {
         return adaptPastedEmailHtml(html);
@@ -309,11 +309,11 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
 
       {/* Canvas */}
       <div
-        className="flex-1 p-2 sm:p-6 bg-slate-100/60 overflow-y-auto cursor-text"
+        className="flex-1 p-2 sm:p-4 bg-slate-100/60 overflow-y-auto cursor-text flex flex-col min-h-0"
         onContextMenu={handleContextMenu}
       >
-        <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-md border border-slate-200/80 overflow-hidden transition-all">
-          <EditorContent editor={editor} />
+        <div className="w-full flex-1 flex flex-col bg-white rounded-xl shadow-md border border-slate-200/80 transition-all min-h-full">
+          <EditorContent editor={editor} className="flex-1 flex flex-col min-h-full w-full" />
         </div>
       </div>
 

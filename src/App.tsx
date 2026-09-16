@@ -38,7 +38,7 @@ export default function App() {
   const charCount = currentContent.text.length;
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans text-slate-800 flex flex-col p-4 sm:p-6">
+    <div className="h-screen bg-slate-100 font-sans text-slate-800 flex flex-col p-3 sm:p-4 overflow-hidden">
       {/* Toast Feedback */}
       {toastMessage && (
         <div className="fixed top-4 right-4 z-50 bg-slate-900 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-2xl border border-slate-700 flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-150">
@@ -48,20 +48,20 @@ export default function App() {
       )}
 
       {/* Main Workspace Layout consuming Reusable Editor */}
-      <main className="flex-1 max-w-7xl w-full mx-auto flex flex-col gap-4">
+      <main className="flex-1 w-full mx-auto flex flex-col gap-3 min-h-0">
         {/* Reusable RichTextEmailEditor Component */}
         <RichTextEmailEditor
           value={defaultInitialContent}
           predefinedTexts={predefinedTextsList}
           attachments={attachmentsList}
-          minHeight="450px"
+          minHeight="100%"
           onChange={(data) => {
             setCurrentContent(data);
           }}
           onEditorReady={(editor) => {
             setEditorInstance(editor);
           }}
-          className="min-h-[620px]"
+          className="flex-1 min-h-0 h-full"
         />
 
         {/* Word & Character Statistics Bar */}
