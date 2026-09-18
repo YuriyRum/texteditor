@@ -161,5 +161,14 @@ export function adaptPastedEmailHtml(html: string): string {
     img.setAttribute('style', imgStyle.trim());
   });
 
+  // Ensure all elements are editable by removing contenteditable="false", disabled, or inert attributes
+  const nonEditables = doc.querySelectorAll('[contenteditable], [disabled], [inert], [aria-readonly]');
+  nonEditables.forEach((el) => {
+    el.removeAttribute('contenteditable');
+    el.removeAttribute('disabled');
+    el.removeAttribute('inert');
+    el.removeAttribute('aria-readonly');
+  });
+
   return doc.body.innerHTML;
 }

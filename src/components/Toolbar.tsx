@@ -34,6 +34,7 @@ import { PredefinedText } from '../types';
 
 interface ToolbarProps {
   editor: Editor | null;
+  isInTable?: boolean;
   onOpenTableModal: () => void;
   onOpenLinkModal: () => void;
   predefinedTexts?: PredefinedText[];
@@ -41,6 +42,7 @@ interface ToolbarProps {
 
 export const Toolbar: React.FC<ToolbarProps> = ({
   editor,
+  isInTable = false,
   onOpenTableModal,
   onOpenLinkModal,
   predefinedTexts = [],
@@ -221,8 +223,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           </select>
         </div>
       )}
-
-      <div className="h-5 w-[1px] bg-slate-200 my-auto mx-0.5" />
 
       {/* Formatting Marks (Bold, Italic, Underline, Strikethrough, Subscript, Superscript) */}
       <div className="flex items-center gap-0.5">
@@ -522,11 +522,12 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       {/* Insertables: Table, Link */}
       <div className="flex items-center gap-1">
+        {/* Table Button */}
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={onOpenTableModal}
-          className="p-1.5 rounded hover:bg-magenta-100 text-magenta-700 font-semibold flex items-center gap-1 text-xs border border-magenta-200 bg-magenta-50/50"
+          className="p-1.5 rounded hover:bg-magenta-100 text-magenta-700 font-semibold flex items-center gap-1 text-xs border border-magenta-200 bg-magenta-50/50 cursor-pointer transition"
           title="Insert Table"
         >
           <TableIcon className="w-4 h-4 text-magenta-600" />

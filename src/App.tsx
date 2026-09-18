@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Editor } from '@tiptap/react';
-import { Sparkles } from 'lucide-react';
+import { Upload } from 'lucide-react';
 
 import { RichTextEmailEditor } from './components/RichTextEmailEditor';
 import { PredefinedText, EmailAttachment } from './types';
@@ -16,6 +16,9 @@ export default function App() {
     <p style="font-family: Calibri, 'Segoe UI', sans-serif; font-size: 11pt; line-height: 1.5;">
       Use the rich toolbar above to format text, change fonts and sizes, apply custom colors, insert hyperlinks, or generate styled email tables.
     </p>
+    <p style="font-family: Calibri, 'Segoe UI', sans-serif; font-size: 11pt; line-height: 1.5; color: #475569;">
+      💡 <b>Text & Outlook .MHT Support:</b> If text is provided as an input, it is automatically wrapped in semantic HTML paragraphs (<code>&lt;p&gt;...&lt;/p&gt;</code>) and shown editable. You can also drag and drop <code>.mht</code> or <code>.txt</code> files directly onto the editor canvas.
+    </p>
   `;
 
   // State holding current content emitted by the reusable editor callbacks
@@ -26,9 +29,6 @@ export default function App() {
 
   const [, setEditorInstance] = useState<Editor | null>(null);
 
-  // Toast notifications
-  const [toastMessage] = useState<string | null>(null);
-
   // Word & character stats
   const wordCount = useMemo(() => {
     const trimmed = currentContent.text.trim();
@@ -38,20 +38,12 @@ export default function App() {
   const charCount = currentContent.text.length;
 
   return (
-    <div className="h-screen bg-slate-100 font-sans text-slate-800 flex flex-col p-3 sm:p-4 overflow-hidden">
-      {/* Toast Feedback */}
-      {toastMessage && (
-        <div className="fixed top-4 right-4 z-50 bg-slate-900 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-2xl border border-slate-700 flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-150">
-          <Sparkles className="w-4 h-4 text-magenta-400 shrink-0" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
-
+    <div className="h-screen bg-slate-100 font-sans text-slate-800 flex flex-col p-2 sm:p-3 overflow-hidden">
       {/* Main Workspace Layout consuming Reusable Editor */}
-      <main className="flex-1 w-full mx-auto flex flex-col gap-3 min-h-0">
-        {/* Reusable RichTextEmailEditor Component */}
+      <main className="flex-1 w-full mx-auto flex flex-col gap-2 min-h-0">
+        {/* Reusable RichTextEmailEditor Component with Text Wrapping & MHT support */}
         <RichTextEmailEditor
-          value={defaultInitialContent}
+          defaultValue={defaultInitialContent}
           predefinedTexts={predefinedTextsList}
           attachments={attachmentsList}
           minHeight="100%"
@@ -65,16 +57,23 @@ export default function App() {
         />
 
         {/* Word & Character Statistics Bar */}
-        <div className="bg-white rounded-xl border border-slate-200 px-6 py-2.5 flex items-center justify-start text-xs text-slate-500 font-medium shadow-xs">
+        <div className="bg-white rounded-xl border border-slate-200 px-4 py-2 flex items-center justify-between text-xs text-slate-500 font-medium shadow-xs shrink-0 flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <span>{wordCount} words</span>
             <span className="text-slate-300">•</span>
             <span>{charCount} characters</span>
+          </div>
+
+          <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-400">
+            <Upload className="w-3.5 h-3.5 text-magenta-500" />
+            <span>Tip: Drag & drop <code>.mht</code>, <code>.mhtml</code>, or <code>.txt</code> files directly onto the editor</span>
           </div>
         </div>
       </main>
     </div>
   );
 }
+
+
 
 

@@ -32,11 +32,20 @@ import {
   convertHtmlToPlainText,
 } from '../utils/outlookFormatter';
 import { adaptPastedEmailHtml } from '../utils/pasteAdapter';
+import {
+  isMhtContent,
+  parseMht,
+  readFileAsMht,
+  ParsedMhtResult,
+} from '../utils/mhtParser';
+import { isHtmlContent, wrapPlainTextInHtml } from '../utils/textToHtml';
+import { MhtEmailHeader } from './MhtEmailHeader';
+import { Upload, CheckCircle2 } from 'lucide-react';
 
 export interface RichTextEmailEditorProps {
-  /** Input parameter containing current HTML data / content */
+  /** Input parameter containing current HTML data, plain text, OR raw .mht/.mhtml email archive */
   value?: string;
-  /** Fallback initial HTML data when value is not provided */
+  /** Fallback initial HTML data, plain text, or MHT content when value is not provided */
   defaultValue?: string;
   /** Optional placeholder text */
   placeholder?: string;
@@ -62,6 +71,9 @@ export interface RichTextEmailEditorProps {
 
   /** Optional callback providing direct access to the underlying Tiptap Editor instance */
   onEditorReady?: (editor: Editor) => void;
+
+  /** Optional callback triggered when an MHT email is loaded/parsed */
+  onMhtLoaded?: (result: ParsedMhtResult) => void;
 }
 
 export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
@@ -77,10 +89,25 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
   onChangeHtml,
   onChangeText,
   onEditorReady,
+  onMhtLoaded,
 }) => {
-  const [showMainToolbarInTable, setShowMainToolbarInTable] = useState(false);
+  const [isInTable, setIsInTable] = useState(false);
   const [isTableModalOpen, setIsTableModalOpen] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+
+  // MHT Metadata state (subject, from, to, date, etc.)
+  const [mhtMetadata, setMhtMetadata] = useState<ParsedMhtResult | null>(() => {
+    const initialRaw = value !== undefined ? value : defaultValue;
+    if (initialRaw && isMhtContent(initialRaw)) {
+      return parseMht(initialRaw);
+    }
+    return null;
+  });
+
+  // Drag and Drop state
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [notification, setNotification] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Right-click context menu state for attachments
   const [contextMenu, setContextMenu] = useState<{
@@ -102,6 +129,7 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
     if (pos) {
       editor.chain().setTextSelection(pos.pos).focus().run();
     }
+    setIsInTable(editor.isActive('table'));
 
     setContextMenu({
       isOpen: true,
@@ -117,8 +145,20 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
     editor.chain().focus().insertContent(` [${attachment.name}] `).run();
   };
 
-  // Determine initial content
-  const initialContent = value !== undefined ? value : defaultValue;
+  // Determine initial content: if MHT -> parse, if HTML -> use, if plain text -> wrap in HTML
+  const initialContent = useMemo(() => {
+    const raw = value !== undefined ? value : defaultValue;
+    if (!raw) return '';
+    if (isMhtContent(raw)) {
+      const parsed = parseMht(raw);
+      return parsed.html;
+    }
+    if (isHtmlContent(raw)) {
+      return raw;
+    }
+    // Text provided as an input must be shown wrapped in HTML
+    return wrapPlainTextInHtml(raw);
+  }, []);
 
   // Track controlled value ref to prevent redundant updates
   const isFirstRenderRef = useRef(true);
@@ -196,6 +236,10 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
       onChangeHtml?.(cleaned);
       onChangeText?.(pureText);
     },
+    onSelectionUpdate({ editor: currentEditor }) {
+      const active = currentEditor.isActive('table');
+      setIsInTable((prev) => (prev !== active ? active : prev));
+    },
   });
 
   // Notify parent component when editor instance is ready
@@ -213,26 +257,155 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
       return;
     }
 
+    if (isMhtContent(value)) {
+      const parsed = parseMht(value);
+      setMhtMetadata(parsed);
+      editor.commands.setContent(parsed.html);
+      onMhtLoaded?.(parsed);
+      if (!readOnly && !editor.isEditable) {
+        editor.setEditable(true);
+      }
+      return;
+    }
+
+    // If text provided as an input is plain text, it must be shown wrapped in HTML
+    if (!isHtmlContent(value)) {
+      const wrapped = wrapPlainTextInHtml(value);
+      const currentRaw = editor.getHTML();
+      if (wrapped !== currentRaw) {
+        editor.commands.setContent(wrapped);
+      }
+      if (!readOnly && !editor.isEditable) {
+        editor.setEditable(true);
+      }
+      return;
+    }
+
     const currentRaw = editor.getHTML();
     if (value !== currentRaw) {
       editor.commands.setContent(value);
     }
-  }, [value, editor]);
+    if (!readOnly && !editor.isEditable) {
+      editor.setEditable(true);
+    }
+  }, [value, editor, onMhtLoaded, readOnly]);
 
-  // Sync readOnly prop
+  // Ensure editor is editable in any case
   useEffect(() => {
-    if (editor && editor.isEditable === readOnly) {
-      editor.setEditable(!readOnly);
+    if (editor) {
+      const shouldBeEditable = !readOnly;
+      if (editor.isEditable !== shouldBeEditable) {
+        editor.setEditable(shouldBeEditable);
+      }
     }
   }, [readOnly, editor]);
 
-  // Reset toolbar override when selection leaves table
-  const isInTable = editor?.isActive('table');
-  useEffect(() => {
-    if (!isInTable) {
-      setShowMainToolbarInTable(false);
+  // File loading helper (for drag-and-drop or manual file picking)
+  const processUploadedFile = async (file: File) => {
+    if (!editor) return;
+
+    try {
+      const isMht =
+        file.name.endsWith('.mht') ||
+        file.name.endsWith('.mhtml') ||
+        file.name.endsWith('.eml') ||
+        file.type.includes('multipart') ||
+        file.type.includes('message');
+
+      if (isMht) {
+        const parsed = await readFileAsMht(file);
+        setMhtMetadata(parsed);
+        editor.commands.setContent(parsed.html);
+        onMhtLoaded?.(parsed);
+        setNotification(`Loaded Outlook email: ${file.name}`);
+      } else if (file.name.endsWith('.html') || file.name.endsWith('.htm') || file.type.includes('html')) {
+        const text = await file.text();
+        if (isMhtContent(text)) {
+          const parsed = parseMht(text);
+          setMhtMetadata(parsed);
+          editor.commands.setContent(parsed.html);
+          onMhtLoaded?.(parsed);
+          setNotification(`Loaded Outlook email: ${file.name}`);
+        } else {
+          const adapted = adaptPastedEmailHtml(text);
+          editor.commands.setContent(adapted);
+          setNotification(`Loaded HTML document: ${file.name}`);
+        }
+      } else {
+        const text = await file.text();
+        if (isMhtContent(text)) {
+          const parsed = parseMht(text);
+          setMhtMetadata(parsed);
+          editor.commands.setContent(parsed.html);
+          onMhtLoaded?.(parsed);
+          setNotification(`Loaded Outlook email: ${file.name}`);
+        } else if (isHtmlContent(text)) {
+          const adapted = adaptPastedEmailHtml(text);
+          editor.commands.setContent(adapted);
+          setNotification(`Loaded HTML document: ${file.name}`);
+        } else {
+          const wrapped = wrapPlainTextInHtml(text);
+          editor.commands.setContent(wrapped);
+          setNotification(`Loaded plain text (wrapped in HTML): ${file.name}`);
+        }
+      }
+
+      setTimeout(() => setNotification(null), 3500);
+    } catch (err) {
+      console.error('Failed to parse uploaded file:', err);
+      setNotification(`Failed to load file: ${file.name}`);
+      setTimeout(() => setNotification(null), 3500);
     }
-  }, [isInTable]);
+  };
+
+  // Drag and drop handlers - ONLY for external files from the user's computer
+  const handleDragOver = (e: React.DragEvent) => {
+    const isFileDrag = e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files');
+    if (!isFileDrag) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDraggingOver) {
+      setIsDraggingOver(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    const isFileDrag = e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files');
+    if (!isFileDrag) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    const isFileDrag = e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files');
+    if (!isFileDrag) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      processUploadedFile(file);
+    }
+  };
+
+  const handleInsertMhtHeaderIntoBody = () => {
+    if (!editor || !mhtMetadata) return;
+
+    const headerHtml = `
+      <div style="border-bottom: 2px solid #e20074; padding: 12px 16px; margin-bottom: 16px; font-family: 'Segoe UI', Calibri, sans-serif; font-size: 10pt; color: #334155; background-color: #fdf2f8; border-radius: 8px;">
+        ${mhtMetadata.subject ? `<div style="font-size: 13pt; font-weight: bold; color: #9d174d; margin-bottom: 6px;">${mhtMetadata.subject}</div>` : ''}
+        ${mhtMetadata.from ? `<div><b>From:</b> ${mhtMetadata.from}</div>` : ''}
+        ${mhtMetadata.to ? `<div><b>To:</b> ${mhtMetadata.to}</div>` : ''}
+        ${mhtMetadata.date ? `<div><b>Sent:</b> ${mhtMetadata.date}</div>` : ''}
+      </div>
+    `;
+
+    editor.chain().focus().setTextSelection(0).insertContent(headerHtml).run();
+    setMhtMetadata(null);
+  };
 
   // Table Insertion Handler
   const handleInsertTable = (config: {
@@ -264,6 +437,7 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
         .run();
     }
 
+    setIsInTable(true);
     setIsTableModalOpen(false);
   };
 
@@ -289,31 +463,100 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
   };
 
   return (
-    <div className={`bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col ${className}`}>
-      {/* Contextual Editor Toolbar */}
+    <div
+      className={`relative bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col ${className}`}
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Hidden File Input for .MHT file upload button */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept=".mht,.mhtml,.eml,.html,.htm"
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files && e.target.files[0]) {
+            processUploadedFile(e.target.files[0]);
+            e.target.value = '';
+          }
+        }}
+      />
+
+      {/* Editor Toolbars */}
       {!readOnly && (
-        isInTable && !showMainToolbarInTable ? (
-          <TableControls
-            editor={editor}
-            onToggleMainToolbar={() => setShowMainToolbarInTable(true)}
-          />
-        ) : (
+        <>
           <Toolbar
             editor={editor}
+            isInTable={isInTable}
             onOpenTableModal={() => setIsTableModalOpen(true)}
             onOpenLinkModal={() => setIsLinkModalOpen(true)}
             predefinedTexts={predefinedTexts}
           />
-        )
+          {isInTable && (
+            <TableControls
+              editor={editor}
+            />
+          )}
+        </>
+      )}
+
+      {/* Outlook Email Header summary banner if MHT has metadata */}
+      {mhtMetadata && (
+        <MhtEmailHeader
+          metadata={mhtMetadata}
+          onInsertIntoBody={handleInsertMhtHeaderIntoBody}
+          onDismiss={() => setMhtMetadata(null)}
+        />
+      )}
+
+      {/* Notification Toast */}
+      {notification && (
+        <div className="absolute top-14 right-4 z-40 bg-slate-900 text-white text-xs font-semibold px-3.5 py-2 rounded-xl shadow-xl border border-slate-700 flex items-center gap-2 animate-in fade-in slide-from-top-1 duration-150">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{notification}</span>
+        </div>
+      )}
+
+      {/* Drag & Drop Visual Dropzone Overlay */}
+      {isDraggingOver && (
+        <div className="absolute inset-0 z-50 bg-slate-900/40 backdrop-blur-[2px] border-3 border-dashed border-magenta-500 rounded-2xl flex flex-col items-center justify-center p-6 text-center pointer-events-none animate-in fade-in duration-150">
+          <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-2xl border border-magenta-200 flex flex-col items-center gap-3 max-w-md">
+            <div className="w-14 h-14 rounded-full bg-magenta-100 flex items-center justify-center text-magenta-600">
+              <Upload className="w-7 h-7 animate-bounce" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Drop Outlook .MHT Email Here</h3>
+              <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
+                Release your file to instantly parse the email body, tables, formatting, and inline images into this editable rich text editor.
+              </p>
+              <div className="mt-3 inline-flex items-center gap-2 text-[11px] font-semibold text-magenta-700 bg-magenta-50 px-2.5 py-1 rounded-full border border-magenta-200">
+                Supports: .mht, .mhtml, .eml, .html, .txt
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Canvas */}
       <div
         className="flex-1 p-2 sm:p-4 bg-slate-100/60 overflow-y-auto cursor-text flex flex-col min-h-0 min-w-0"
         onContextMenu={handleContextMenu}
+        onClick={(e) => {
+          if (editor && !readOnly && e.target === e.currentTarget) {
+            // Only focus at the end if the user clicked the blank gray margin AND has no active selection
+            if (editor.state.selection.empty) {
+              editor.commands.focus('end');
+            }
+          }
+        }}
       >
-        <div className="w-full flex-1 flex flex-col bg-white rounded-xl shadow-md border border-slate-200/80 transition-all min-h-full min-w-0 max-w-full overflow-hidden">
-          <EditorContent editor={editor} className="flex-1 flex flex-col min-h-full w-full min-w-0 max-w-full overflow-y-auto overflow-x-hidden" />
+        <div className="w-full flex-1 flex flex-col bg-white rounded-xl shadow-md border border-slate-200/80 transition-all min-h-full min-w-0 max-w-full overflow-hidden cursor-text">
+          <EditorContent
+            editor={editor}
+            className="flex-1 flex flex-col min-h-full w-full min-w-0 max-w-full overflow-y-auto overflow-x-hidden cursor-text"
+          />
         </div>
       </div>
 
@@ -322,6 +565,8 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
         isOpen={contextMenu.isOpen}
         x={contextMenu.x}
         y={contextMenu.y}
+        editor={editor}
+        isInTable={isInTable}
         attachments={attachments}
         onSelect={handleSelectAttachment}
         onClose={() => setContextMenu({ isOpen: false, x: 0, y: 0 })}
@@ -353,3 +598,4 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
     </div>
   );
 };
+

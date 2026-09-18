@@ -20,6 +20,15 @@
   overflow-wrap: break-word;
   max-width: 100% !important;
   box-sizing: border-box;
+  min-height: 100% !important;
+  cursor: text !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+.tiptap {
+  min-height: 100% !important;
+  cursor: text !important;
 }
 
 .ProseMirror * {
@@ -27,6 +36,8 @@
   box-sizing: border-box;
   overflow-wrap: break-word;
   word-break: break-word;
+  user-select: text !important;
+  -webkit-user-select: text !important;
 }
 
 .ProseMirror img {
@@ -78,12 +89,22 @@
 
 .ProseMirror td,
 .ProseMirror th {
-  min-width: 1em;
+  min-width: 2em;
   border: 1px solid #cbd5e1;
   padding: 8px 12px;
   vertical-align: top;
   box-sizing: border-box;
   position: relative;
+  cursor: text !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+.ProseMirror td p,
+.ProseMirror th p {
+  margin: 0 !important;
+  min-height: 1.5em !important;
+  cursor: text !important;
 }
 
 .ProseMirror th {
