@@ -76,6 +76,80 @@ export interface RichTextEmailEditorProps {
   onMhtLoaded?: (result: ParsedMhtResult) => void;
 }
 
+const CustomTableCell = TableCell.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      backgroundColor: {
+        default: null,
+        parseHTML: (element) => element.style.backgroundColor || element.getAttribute('bgcolor') || null,
+        renderHTML: (attributes) => {
+          if (!attributes.backgroundColor) return {};
+          return {
+            style: `background-color: ${attributes.backgroundColor};`,
+          };
+        },
+      },
+      style: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('style') || null,
+        renderHTML: (attributes) => {
+          if (!attributes.style) return {};
+          return {
+            style: attributes.style,
+          };
+        },
+      },
+    };
+  },
+});
+
+const CustomTableHeader = TableHeader.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      backgroundColor: {
+        default: null,
+        parseHTML: (element) => element.style.backgroundColor || element.getAttribute('bgcolor') || null,
+        renderHTML: (attributes) => {
+          if (!attributes.backgroundColor) return {};
+          return {
+            style: `background-color: ${attributes.backgroundColor};`,
+          };
+        },
+      },
+      style: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('style') || null,
+        renderHTML: (attributes) => {
+          if (!attributes.style) return {};
+          return {
+            style: attributes.style,
+          };
+        },
+      },
+    };
+  },
+});
+
+const CustomTable = Table.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      style: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('style') || null,
+        renderHTML: (attributes) => {
+          if (!attributes.style) return {};
+          return {
+            style: attributes.style,
+          };
+        },
+      },
+    };
+  },
+});
+
 export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
   value,
   defaultValue = '',
@@ -107,7 +181,6 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
   // Drag and Drop state
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Right-click context menu state for attachments
   const [contextMenu, setContextMenu] = useState<{
@@ -190,19 +263,19 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
       }),
       Subscript,
       Superscript,
-      Table.configure({
+      CustomTable.configure({
         resizable: true,
         HTMLAttributes: {
           style: 'width: 100%; border-collapse: collapse; border: 1px solid #cbd5e1; margin: 12px 0;',
         },
       }),
       TableRow,
-      TableHeader.configure({
+      CustomTableHeader.configure({
         HTMLAttributes: {
           style: 'padding: 8px 12px; border: 1px solid #cbd5e1; background-color: #fdf2f8; font-weight: 600; text-align: left;',
         },
       }),
-      TableCell.configure({
+      CustomTableCell.configure({
         HTMLAttributes: {
           style: 'padding: 8px 12px; border: 1px solid #cbd5e1; text-align: left;',
         },
@@ -305,12 +378,24 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
     if (!editor) return;
 
     try {
-      const isMht =
+      let isMht =
         file.name.endsWith('.mht') ||
         file.name.endsWith('.mhtml') ||
         file.name.endsWith('.eml') ||
         file.type.includes('multipart') ||
         file.type.includes('message');
+
+      if (!isMht) {
+        // Read small sample to detect MIME headers even if file extension is .txt, .dat, etc.
+        try {
+          const sample = await file.slice(0, 2048).text();
+          if (isMhtContent(sample)) {
+            isMht = true;
+          }
+        } catch {
+          // ignore
+        }
+      }
 
       if (isMht) {
         const parsed = await readFileAsMht(file);
@@ -318,28 +403,9 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
         editor.commands.setContent(parsed.html);
         onMhtLoaded?.(parsed);
         setNotification(`Loaded Outlook email: ${file.name}`);
-      } else if (file.name.endsWith('.html') || file.name.endsWith('.htm') || file.type.includes('html')) {
-        const text = await file.text();
-        if (isMhtContent(text)) {
-          const parsed = parseMht(text);
-          setMhtMetadata(parsed);
-          editor.commands.setContent(parsed.html);
-          onMhtLoaded?.(parsed);
-          setNotification(`Loaded Outlook email: ${file.name}`);
-        } else {
-          const adapted = adaptPastedEmailHtml(text);
-          editor.commands.setContent(adapted);
-          setNotification(`Loaded HTML document: ${file.name}`);
-        }
       } else {
         const text = await file.text();
-        if (isMhtContent(text)) {
-          const parsed = parseMht(text);
-          setMhtMetadata(parsed);
-          editor.commands.setContent(parsed.html);
-          onMhtLoaded?.(parsed);
-          setNotification(`Loaded Outlook email: ${file.name}`);
-        } else if (isHtmlContent(text)) {
+        if (isHtmlContent(text)) {
           const adapted = adaptPastedEmailHtml(text);
           editor.commands.setContent(adapted);
           setNotification(`Loaded HTML document: ${file.name}`);
@@ -470,20 +536,6 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Hidden File Input for .MHT file upload button */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        accept=".mht,.mhtml,.eml,.html,.htm"
-        className="hidden"
-        onChange={(e) => {
-          if (e.target.files && e.target.files[0]) {
-            processUploadedFile(e.target.files[0]);
-            e.target.value = '';
-          }
-        }}
-      />
-
       {/* Editor Toolbars */}
       {!readOnly && (
         <>

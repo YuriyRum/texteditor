@@ -3,27 +3,17 @@
  * (e.g., Microsoft Outlook, Gmail, Apple Mail, Yahoo Mail, Microsoft Word, Thunderbird).
  */
 
+import { cleanAndInlineOutlookHtml } from './mhtParser';
+
 export function adaptPastedEmailHtml(html: string): string {
   if (!html || !html.trim()) return html;
 
-  let cleaned = html;
+  // First run the full Outlook/Word CSS inliner & artifact cleaner
+  const inlined = cleanAndInlineOutlookHtml(html);
 
-  // 1. Remove MS Office/Outlook conditional comments (<!--[if gte mso 9]>...<![endif]-->)
-  cleaned = cleaned.replace(/<!--\[if[\s\S]*?\]>[\s\S]*?<!\[endif\]-->/gi, '');
-
-  // 2. Remove XML namespace declarations & MS Office tags like <o:p>, <w:WordDocument>, etc.
-  cleaned = cleaned.replace(/<\/?o:[^>]*>/gi, '');
-  cleaned = cleaned.replace(/<\/?w:[^>]*>/gi, '');
-  cleaned = cleaned.replace(/<\/?v:[^>]*>/gi, '');
-  cleaned = cleaned.replace(/<\/?m:[^>]*>/gi, '');
-  cleaned = cleaned.replace(/<\?xml[^>]*>/gi, '');
-
-  // 3. Remove embedded <style> tags that might break page layout, but retain inline styles
-  cleaned = cleaned.replace(/<style[\s\S]*?<\/style>/gi, '');
-
-  // Parse HTML into a DOM document to safely manipulate elements
+  // Parse HTML into a DOM document to safely normalize elements for Tiptap
   const parser = new DOMParser();
-  const doc = parser.parseFromString(cleaned, 'text/html');
+  const doc = parser.parseFromString(inlined, 'text/html');
 
   // Convert legacy <font> tags to modern <span style="...">
   const fontTags = doc.querySelectorAll('font');
@@ -34,7 +24,6 @@ export function adaptPastedEmailHtml(html: string): string {
     const size = font.getAttribute('size');
 
     const styles: string[] = [];
-
     if (color && color !== 'windowtext') {
       styles.push(`color: ${color}`);
     }
@@ -51,8 +40,7 @@ export function adaptPastedEmailHtml(html: string): string {
         '6': '24pt',
         '7': '36pt',
       };
-      const ptSize = sizeMap[size] || '11pt';
-      styles.push(`font-size: ${ptSize}`);
+      styles.push(`font-size: ${sizeMap[size] || '11pt'}`);
     }
 
     if (styles.length > 0) {
@@ -63,12 +51,6 @@ export function adaptPastedEmailHtml(html: string): string {
       span.appendChild(font.firstChild);
     }
     font.parentNode?.replaceChild(span, font);
-  });
-
-  // Normalize Outlook MsoListParagraph or custom list paragraphs
-  const listParagraphs = doc.querySelectorAll('p[class*="MsoList"], p.MsoNormal');
-  listParagraphs.forEach((p) => {
-    p.removeAttribute('class');
   });
 
   // Ensure all <span> and <p> inline styles are normalized for Tiptap
@@ -86,18 +68,11 @@ export function adaptPastedEmailHtml(html: string): string {
 
     // Handle Outlook's 'color: windowtext' or 'color: initial'
     if (/color:\s*(windowtext|initial)/i.test(styleAttr)) {
-      styleAttr = styleAttr.replace(/color:\s*(windowtext|initial);?/gi, '');
+      styleAttr = styleAttr.replace(/color:\s*(windowtext|initial);?/gi, 'color: #1e293b;');
     }
 
-    // Clean mso- inline properties that might clutter inline CSS
+    // Clean pure mso- inline properties that might clutter inline CSS
     styleAttr = styleAttr.replace(/mso-[^;]+;?/gi, '');
-
-    // Remove or constrain fixed inline width/min-width declarations that exceed container
-    styleAttr = styleAttr.replace(/(?:^|;\s*)(?:width|min-width)\s*:\s*[^;]+;?/gi, (match) => {
-      // Keep width: 100% or percentages
-      if (match.includes('%')) return match;
-      return ' max-width: 100%; ';
-    });
 
     // Replace white-space: nowrap with pre-wrap / normal
     styleAttr = styleAttr.replace(/white-space\s*:\s*nowrap;?/gi, 'white-space: pre-wrap; word-break: break-word; ');
@@ -118,17 +93,13 @@ export function adaptPastedEmailHtml(html: string): string {
     }
   });
 
-  // Ensure pasted tables are correctly styled and visible
+  // Ensure pasted tables are correctly styled, visible, and retain existing styles
   const tables = doc.querySelectorAll('table');
   tables.forEach((table) => {
-    table.setAttribute('border', '1');
-    table.setAttribute('cellpadding', '6');
-    table.setAttribute('cellspacing', '0');
-
     let tableStyle = table.getAttribute('style') || '';
-    // Strip fixed width from table style if present
-    tableStyle = tableStyle.replace(/(?:^|;\s*)width\s*:\s*[^;]+;?/gi, '');
-    tableStyle += ' border-collapse: collapse; width: 100%; max-width: 100%; table-layout: auto; word-break: break-word; border: 1px solid #cbd5e1; margin: 12px 0;';
+    if (!tableStyle.includes('border-collapse')) {
+      tableStyle = `border-collapse: collapse; width: 100%; max-width: 100%; margin: 12px 0; ${tableStyle}`;
+    }
     table.setAttribute('style', tableStyle.trim());
 
     const cells = table.querySelectorAll('th, td');
@@ -142,9 +113,6 @@ export function adaptPastedEmailHtml(html: string): string {
       }
       if (!cellStyle.includes('text-align')) {
         cellStyle += ' text-align: left;';
-      }
-      if (!cellStyle.includes('word-break')) {
-        cellStyle += ' word-break: break-word; overflow-wrap: break-word;';
       }
       cell.setAttribute('style', cellStyle.trim());
     });
