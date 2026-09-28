@@ -97,38 +97,28 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       targetRange = lastSelectionRef.current;
     }
 
-    if (!targetRange || targetRange.from === targetRange.to) {
+    if (targetRange) {
+      const chain = editor.chain().setTextSelection(targetRange);
+      action(chain);
+    } else {
       showNoSelectionWarning();
-      return;
     }
-
-    // Explicitly scope the chain operation to the text selection range
-    const chain = editor.chain().focus().setTextSelection(targetRange);
-    action(chain);
   };
 
-  const currentFontFamily = editor.getAttributes('textStyle').fontFamily || 'Calibri, sans-serif';
+  const currentFontFamily = editor.getAttributes('textStyle').fontFamily || 'Calibri';
   const currentFontSize = editor.getAttributes('textStyle').fontSize || '11pt';
 
   const handleFontFamilyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
+    const family = e.target.value;
     runOnSelection((chain) => {
-      if (val === 'reset') {
-        chain.unsetFontFamily().run();
-      } else {
-        chain.setFontFamily(val).run();
-      }
+      chain.setFontFamily(family).run();
     });
   };
 
   const handleFontSizeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
+    const size = e.target.value;
     runOnSelection((chain) => {
-      if (val === 'reset') {
-        chain.unsetFontSize().run();
-      } else {
-        chain.setFontSize(val).run();
-      }
+      chain.setFontSize(size).run();
     });
   };
 
@@ -210,7 +200,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             defaultValue=""
             onChange={handlePredefinedTextChange}
             className="bg-transparent text-xs text-slate-800 font-medium focus:outline-none cursor-pointer max-w-[170px] truncate"
-            title="Insert Predefined Text / Template"
+            title="Insert Predefined Text / Snippet"
           >
             <option value="" disabled hidden>
               Insert Predefined Text...
@@ -267,7 +257,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => runOnSelection((chain) => chain.toggleStrike().run())}
           className={`p-1.5 rounded hover:bg-magenta-50 ${
-            editor.isActive('strike') ? 'bg-magenta-100 text-magenta-700 font-bold' : ''
+            editor.isActive('strike') ? 'bg-magenta-100 text-magenta-700' : ''
           }`}
           title="Strikethrough (Applies to selected text)"
         >
@@ -301,108 +291,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       <div className="h-5 w-[1px] bg-slate-200 my-auto mx-0.5" />
 
-      {/* Colors (Text Color & Highlight) */}
-      <div className="flex items-center gap-1 relative">
-        {/* Text Color Picker */}
-        <div className="relative">
-          <button
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              setShowColorPicker(!showColorPicker);
-              setShowHighlightPicker(false);
-            }}
-            className="p-1.5 rounded hover:bg-slate-100 flex items-center gap-1"
-            title="Text Color (Applies to selected text)"
-          >
-            <Palette className="w-4 h-4 text-slate-700" />
-            <div
-              className="w-3 h-3 rounded-full border border-slate-300 -ml-0.5"
-              style={{ backgroundColor: editor.getAttributes('textStyle').color || '#000000' }}
-            />
-          </button>
-
-          {showColorPicker && (
-            <div className="absolute left-0 mt-2 p-3 bg-white border border-slate-200 rounded-xl shadow-xl z-50 w-52 animate-in fade-in duration-100">
-              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                Font Color
-              </div>
-              <div className="grid grid-cols-5 gap-1.5">
-                {COLOR_PALETTE.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => setTextColor(c)}
-                    className="w-7 h-7 rounded border border-slate-200 hover:scale-110 transition shadow-2xs"
-                    style={{ backgroundColor: c }}
-                  />
-                ))}
-              </div>
-              <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between">
-                <span className="text-[11px] text-slate-500 font-medium">Custom Color</span>
-                <input
-                  type="color"
-                  onChange={(e) => setTextColor(e.target.value)}
-                  className="w-6 h-6 rounded cursor-pointer border border-slate-300"
-                />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Highlight Color Picker */}
-        <div className="relative">
-          <button
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              setShowHighlightPicker(!showHighlightPicker);
-              setShowColorPicker(false);
-            }}
-            className={`p-1.5 rounded hover:bg-slate-100 flex items-center gap-1 ${
-              editor.isActive('highlight') ? 'bg-magenta-100 text-magenta-700' : ''
-            }`}
-            title="Text Highlight Background (Applies to selected text)"
-          >
-            <Highlighter className="w-4 h-4 text-magenta-600" />
-          </button>
-
-          {showHighlightPicker && (
-            <div className="absolute left-0 mt-2 p-3 bg-white border border-slate-200 rounded-xl shadow-xl z-50 w-48 animate-in fade-in duration-100">
-              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                Highlight Color
-              </div>
-              <div className="grid grid-cols-4 gap-2">
-                {['#fce7f3', '#ffff00', '#a6f4d0', '#bfdbfe', '#fbcfe8', '#fed7aa', '#e9d5ff'].map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => setHighlightColor(c)}
-                    className="w-8 h-8 rounded border border-slate-200 hover:scale-105 transition"
-                    style={{ backgroundColor: c }}
-                  />
-                ))}
-              </div>
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  runOnSelection((chain) => chain.unsetHighlight().run());
-                  setShowHighlightPicker(false);
-                }}
-                className="mt-2.5 w-full py-1 text-[11px] text-slate-600 bg-slate-100 hover:bg-slate-200 rounded font-medium"
-              >
-                Clear Highlight
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="h-5 w-[1px] bg-slate-200 my-auto mx-0.5" />
-
       {/* Headings */}
       <div className="flex items-center gap-0.5">
         <button
@@ -412,7 +300,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           className={`p-1.5 rounded hover:bg-slate-100 ${
             editor.isActive('heading', { level: 1 }) ? 'bg-magenta-100 text-magenta-700 font-bold' : ''
           }`}
-          title="Heading 1 (Applies to selection)"
+          title="Heading 1"
         >
           <Heading1 className="w-4 h-4" />
         </button>
@@ -423,7 +311,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           className={`p-1.5 rounded hover:bg-slate-100 ${
             editor.isActive('heading', { level: 2 }) ? 'bg-magenta-100 text-magenta-700 font-bold' : ''
           }`}
-          title="Heading 2 (Applies to selection)"
+          title="Heading 2"
         >
           <Heading2 className="w-4 h-4" />
         </button>
@@ -434,7 +322,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           className={`p-1.5 rounded hover:bg-slate-100 ${
             editor.isActive('heading', { level: 3 }) ? 'bg-magenta-100 text-magenta-700 font-bold' : ''
           }`}
-          title="Heading 3 (Applies to selection)"
+          title="Heading 3"
         >
           <Heading3 className="w-4 h-4" />
         </button>
@@ -442,7 +330,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       <div className="h-5 w-[1px] bg-slate-200 my-auto mx-0.5" />
 
-      {/* Alignments */}
+      {/* Alignment */}
       <div className="flex items-center gap-0.5">
         <button
           type="button"
@@ -451,7 +339,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           className={`p-1.5 rounded hover:bg-slate-100 ${
             editor.isActive({ textAlign: 'left' }) ? 'bg-magenta-100 text-magenta-700' : ''
           }`}
-          title="Align Left (Applies to selection)"
+          title="Align Left"
         >
           <AlignLeft className="w-4 h-4" />
         </button>
@@ -462,7 +350,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           className={`p-1.5 rounded hover:bg-slate-100 ${
             editor.isActive({ textAlign: 'center' }) ? 'bg-magenta-100 text-magenta-700' : ''
           }`}
-          title="Align Center (Applies to selection)"
+          title="Align Center"
         >
           <AlignCenter className="w-4 h-4" />
         </button>
@@ -473,7 +361,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           className={`p-1.5 rounded hover:bg-slate-100 ${
             editor.isActive({ textAlign: 'right' }) ? 'bg-magenta-100 text-magenta-700' : ''
           }`}
-          title="Align Right (Applies to selection)"
+          title="Align Right"
         >
           <AlignRight className="w-4 h-4" />
         </button>
@@ -484,10 +372,113 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           className={`p-1.5 rounded hover:bg-slate-100 ${
             editor.isActive({ textAlign: 'justify' }) ? 'bg-magenta-100 text-magenta-700' : ''
           }`}
-          title="Justify (Applies to selection)"
+          title="Justify"
         >
           <AlignJustify className="w-4 h-4" />
         </button>
+      </div>
+
+      <div className="h-5 w-[1px] bg-slate-200 my-auto mx-0.5" />
+
+      {/* Colors (Text & Highlight) */}
+      <div className="flex items-center gap-1">
+        {/* Text Color Picker */}
+        <div className="relative">
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              setShowColorPicker(!showColorPicker);
+              setShowHighlightPicker(false);
+            }}
+            className="p-1.5 rounded hover:bg-slate-100 flex items-center gap-0.5"
+            title="Font Color (Applies to selected text)"
+          >
+            <Palette className="w-4 h-4 text-magenta-600" />
+            <div
+              className="w-2.5 h-2.5 rounded-full border border-slate-300"
+              style={{ backgroundColor: editor.getAttributes('textStyle').color || '#000000' }}
+            />
+          </button>
+
+          {showColorPicker && (
+            <div className="absolute top-full left-0 mt-1 p-2 bg-white rounded-lg shadow-lg border border-slate-200 z-50 grid grid-cols-4 gap-1.5 w-36">
+              {COLOR_PALETTE.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setTextColor(c)}
+                  className="w-6 h-6 rounded-md border border-slate-200 hover:scale-110 transition-transform cursor-pointer"
+                  style={{ backgroundColor: c }}
+                  title={c}
+                />
+              ))}
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  runOnSelection((chain) => chain.unsetColor().run());
+                  setShowColorPicker(false);
+                }}
+                className="col-span-4 mt-1 text-[11px] py-1 text-slate-500 hover:bg-slate-100 rounded text-center"
+              >
+                Reset Default Color
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Text Highlight / Background Color */}
+        <div className="relative">
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              setShowHighlightPicker(!showHighlightPicker);
+              setShowColorPicker(false);
+            }}
+            className={`p-1.5 rounded hover:bg-slate-100 flex items-center gap-0.5 ${
+              editor.isActive('highlight') ? 'bg-amber-100 text-amber-900' : ''
+            }`}
+            title="Text Highlight Color"
+          >
+            <Highlighter className="w-4 h-4 text-amber-600" />
+          </button>
+
+          {showHighlightPicker && (
+            <div className="absolute top-full left-0 mt-1 p-2 bg-white rounded-lg shadow-lg border border-slate-200 z-50 grid grid-cols-3 gap-1.5 w-32">
+              {[
+                '#fef08a', // Yellow
+                '#bbf7d0', // Green
+                '#bae6fd', // Blue
+                '#fbcfe8', // Pink
+                '#fed7aa', // Orange
+                '#e9d5ff', // Purple
+              ].map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setHighlightColor(c)}
+                  className="w-7 h-7 rounded border border-slate-300 hover:scale-110 transition-transform cursor-pointer"
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  runOnSelection((chain) => chain.unsetHighlight().run());
+                  setShowHighlightPicker(false);
+                }}
+                className="col-span-3 mt-1 text-[11px] py-1 text-slate-500 hover:bg-slate-100 rounded text-center"
+              >
+                Remove Highlight
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="h-5 w-[1px] bg-slate-200 my-auto mx-0.5" />
@@ -520,7 +511,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
       <div className="h-5 w-[1px] bg-slate-200 my-auto mx-0.5" />
 
-      {/* Insertables: Table, Link */}
+      {/* Insertables: Table, Link, Divider */}
       <div className="flex items-center gap-1">
         {/* Table Button */}
         <button
@@ -560,7 +551,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       <div className="h-5 w-[1px] bg-slate-200 my-auto mx-0.5" />
 
       {/* Undo/Redo & Clear Formatting */}
-      <div className="flex items-center gap-0.5 ml-auto">
+      <div className="flex items-center gap-1 ml-auto">
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}

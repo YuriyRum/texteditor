@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useEditor, EditorContent, Editor } from '@tiptap/react';
+import { useEditor, EditorContent, Editor, ReactNodeViewRenderer } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table-row';
@@ -22,11 +22,17 @@ import { Toolbar } from './Toolbar';
 import { TableControls } from './TableControls';
 import { InsertTableModal } from './InsertTableModal';
 import { InsertLinkModal } from './InsertLinkModal';
+import { ResizableImageNodeView } from './ResizableImageNodeView';
 
-import { TablePreset, PredefinedText, EmailAttachment } from '../types';
+import { TablePreset, PredefinedText, EmailAttachment, TableBorderConfig } from '../types';
 import { DEFAULT_PREDEFINED_TEXTS } from '../data/defaultPredefinedTexts';
 import { DEFAULT_ATTACHMENTS } from '../data/defaultAttachments';
 import { AttachmentContextMenu } from './AttachmentContextMenu';
+import {
+  applyTablePresetToActiveTable,
+  extractBorderCssFromStyle,
+  stripManagedStyleProps,
+} from '../utils/tableBorderUtils';
 import {
   cleanHtmlForOutlook,
   convertHtmlToPlainText,
@@ -90,13 +96,29 @@ const CustomTableCell = TableCell.extend({
           };
         },
       },
+      borderCss: {
+        default: null,
+        parseHTML: (element) => extractBorderCssFromStyle(element.getAttribute('style')),
+        renderHTML: (attributes) => {
+          if (!attributes.borderCss) return {};
+          return {
+            style: attributes.borderCss,
+          };
+        },
+      },
       style: {
         default: null,
-        parseHTML: (element) => element.getAttribute('style') || null,
+        parseHTML: (element) =>
+          stripManagedStyleProps(element.getAttribute('style'), true, true),
         renderHTML: (attributes) => {
-          if (!attributes.style) return {};
+          const cleaned = stripManagedStyleProps(
+            attributes.style,
+            Boolean(attributes.backgroundColor),
+            Boolean(attributes.borderCss)
+          );
+          if (!cleaned) return {};
           return {
-            style: attributes.style,
+            style: cleaned,
           };
         },
       },
@@ -118,13 +140,29 @@ const CustomTableHeader = TableHeader.extend({
           };
         },
       },
+      borderCss: {
+        default: null,
+        parseHTML: (element) => extractBorderCssFromStyle(element.getAttribute('style')),
+        renderHTML: (attributes) => {
+          if (!attributes.borderCss) return {};
+          return {
+            style: attributes.borderCss,
+          };
+        },
+      },
       style: {
         default: null,
-        parseHTML: (element) => element.getAttribute('style') || null,
+        parseHTML: (element) =>
+          stripManagedStyleProps(element.getAttribute('style'), true, true),
         renderHTML: (attributes) => {
-          if (!attributes.style) return {};
+          const cleaned = stripManagedStyleProps(
+            attributes.style,
+            Boolean(attributes.backgroundColor),
+            Boolean(attributes.borderCss)
+          );
+          if (!cleaned) return {};
           return {
-            style: attributes.style,
+            style: cleaned,
           };
         },
       },
@@ -147,6 +185,44 @@ const CustomTable = Table.extend({
         },
       },
     };
+  },
+});
+
+const ResizableImage = Image.extend({
+  draggable: true,
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: (element) =>
+          element.style.width || element.getAttribute('width') || null,
+        renderHTML: (attributes) => {
+          if (!attributes.width) return {};
+          const w = typeof attributes.width === 'number' ? `${attributes.width}px` : attributes.width;
+          return {
+            width: String(attributes.width).replace('px', ''),
+            style: `width: ${w}; max-width: 100%;`,
+          };
+        },
+      },
+      height: {
+        default: null,
+        parseHTML: (element) =>
+          element.style.height || element.getAttribute('height') || null,
+        renderHTML: (attributes) => {
+          if (!attributes.height) return {};
+          const h = typeof attributes.height === 'number' ? `${attributes.height}px` : attributes.height;
+          return {
+            height: String(attributes.height).replace('px', ''),
+            style: `height: ${h};`,
+          };
+        },
+      },
+    };
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(ResizableImageNodeView);
   },
 });
 
@@ -235,6 +311,7 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
 
   // Track controlled value ref to prevent redundant updates
   const isFirstRenderRef = useRef(true);
+  const lastEmittedHtmlRef = useRef<string | null>(null);
 
   const editor = useEditor({
     editable: !readOnly,
@@ -242,6 +319,10 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
       StarterKit.configure({
         heading: {
           levels: [1, 2, 3],
+        },
+        dropcursor: {
+          color: '#e20074',
+          width: 3,
         },
       }),
       TextStyle,
@@ -266,21 +347,21 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
       CustomTable.configure({
         resizable: true,
         HTMLAttributes: {
-          style: 'width: 100%; border-collapse: collapse; border: 1px solid #cbd5e1; margin: 12px 0;',
+          style: 'width: 100%; border-collapse: collapse; margin: 12px 0;',
         },
       }),
       TableRow,
       CustomTableHeader.configure({
         HTMLAttributes: {
-          style: 'padding: 8px 12px; border: 1px solid #cbd5e1; background-color: #fdf2f8; font-weight: 600; text-align: left;',
+          style: 'padding: 8px 12px; font-weight: 600; text-align: left;',
         },
       }),
       CustomTableCell.configure({
         HTMLAttributes: {
-          style: 'padding: 8px 12px; border: 1px solid #cbd5e1; text-align: left;',
+          style: 'padding: 8px 12px; text-align: left;',
         },
       }),
-      Image.configure({
+      ResizableImage.configure({
         inline: true,
         allowBase64: true,
       }),
@@ -297,12 +378,93 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
       transformPastedHTML(html) {
         return adaptPastedEmailHtml(html);
       },
+      handleDrop(view, event, _slice, moved) {
+        // If repositioning an existing element within the editor, let ProseMirror handle moving
+        if (moved || (view as unknown as { dragging?: unknown }).dragging) {
+          event.stopPropagation();
+          return false;
+        }
+
+        // Custom dragged image (from image presets / drawer)
+        const customImg = event.dataTransfer?.getData('application/x-image-url');
+        if (
+          customImg &&
+          (customImg.startsWith('data:image/') ||
+            customImg.startsWith('http://') ||
+            customImg.startsWith('https://') ||
+            customImg.startsWith('blob:'))
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          const coords = { left: event.clientX, top: event.clientY };
+          const pos = view.posAtCoords(coords);
+          const node = view.state.schema.nodes.image.create({
+            src: customImg,
+            alt: 'Email image',
+          });
+          const insertPos = pos ? pos.pos : view.state.selection.to;
+          const tr = view.state.tr.insert(insertPos, node);
+          view.dispatch(tr);
+          return true;
+        }
+
+        // Dropped image file from OS
+        if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
+          const file = event.dataTransfer.files[0];
+          if (file.type.startsWith('image/')) {
+            event.preventDefault();
+            event.stopPropagation();
+            const coords = { left: event.clientX, top: event.clientY };
+            const pos = view.posAtCoords(coords);
+            const reader = new FileReader();
+            reader.onload = () => {
+              if (typeof reader.result === 'string') {
+                const node = view.state.schema.nodes.image.create({
+                  src: reader.result,
+                  alt: file.name,
+                });
+                const insertPos = pos ? pos.pos : view.state.selection.to;
+                const tr = view.state.tr.insert(insertPos, node);
+                view.dispatch(tr);
+              }
+            };
+            reader.readAsDataURL(file);
+            return true;
+          }
+        }
+
+        return false;
+      },
+      handlePaste(view, event) {
+        if (event.clipboardData?.files && event.clipboardData.files.length > 0) {
+          const file = event.clipboardData.files[0];
+          if (file.type.startsWith('image/')) {
+            event.preventDefault();
+            const reader = new FileReader();
+            reader.onload = () => {
+              if (typeof reader.result === 'string') {
+                const node = view.state.schema.nodes.image.create({
+                  src: reader.result,
+                  alt: file.name,
+                });
+                const tr = view.state.tr.replaceSelectionWith(node);
+                view.dispatch(tr);
+              }
+            };
+            reader.readAsDataURL(file);
+            return true;
+          }
+        }
+        return false;
+      },
     },
     onUpdate({ editor: currentEditor }) {
       const rawHtml = currentEditor.getHTML();
       const currentFont = currentEditor.getAttributes('textStyle').fontFamily || 'Calibri, sans-serif';
       const cleaned = cleanHtmlForOutlook(rawHtml, currentFont);
       const pureText = convertHtmlToPlainText(rawHtml);
+
+      lastEmittedHtmlRef.current = cleaned;
 
       // Trigger callbacks
       onChange?.({ html: cleaned, text: pureText });
@@ -355,7 +517,7 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
     }
 
     const currentRaw = editor.getHTML();
-    if (value !== currentRaw) {
+    if (value !== currentRaw && value !== lastEmittedHtmlRef.current) {
       editor.commands.setContent(value);
     }
     if (!readOnly && !editor.isEditable) {
@@ -378,6 +540,20 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
     if (!editor) return;
 
     try {
+      // Handle image files directly
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string') {
+            editor.chain().focus().setImage({ src: reader.result, alt: file.name }).run();
+            setNotification(`Inserted image: ${file.name}`);
+            setTimeout(() => setNotification(null), 3000);
+          }
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+
       let isMht =
         file.name.endsWith('.mht') ||
         file.name.endsWith('.mhtml') ||
@@ -424,10 +600,24 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
     }
   };
 
-  // Drag and drop handlers - ONLY for external files from the user's computer
+  // Drag and drop handlers - for images, palette elements, or external email archive files
   const handleDragOver = (e: React.DragEvent) => {
+    // If it's a custom draggable image from our image drawer/palette, don't show full-page modal
+    if (e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('application/x-image-url')) {
+      return;
+    }
+
     const isFileDrag = e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files');
     if (!isFileDrag) return;
+
+    // If it's an image file, don't show full-page takeover overlay so user can target exact line in editor!
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      const first = e.dataTransfer.items[0];
+      if (first.type.startsWith('image/')) {
+        return;
+      }
+    }
+
     e.preventDefault();
     e.stopPropagation();
     if (!isDraggingOver) {
@@ -445,14 +635,43 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
   };
 
   const handleDrop = (e: React.DragEvent) => {
+    setIsDraggingOver(false);
+
+    // Ignore if already handled by ProseMirror's internal handleDrop
+    if (e.defaultPrevented) return;
+    if (
+      e.dataTransfer.types &&
+      Array.from(e.dataTransfer.types).includes('application/x-image-url')
+    ) {
+      return;
+    }
+
     const isFileDrag = e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files');
     if (!isFileDrag) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDraggingOver(false);
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
+      // If dropped inside .ProseMirror, editorProps.handleDrop already handled image files
+      if (file.type.startsWith('image/')) {
+        if ((e.target as HTMLElement)?.closest('.ProseMirror')) {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string' && editor) {
+            editor.chain().focus().setImage({ src: reader.result, alt: file.name }).run();
+            setNotification(`Inserted image: ${file.name}`);
+            setTimeout(() => setNotification(null), 3000);
+          }
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      e.preventDefault();
+      e.stopPropagation();
       processUploadedFile(file);
     }
   };
@@ -479,29 +698,21 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
     cols: number;
     withHeaderRow: boolean;
     preset: TablePreset;
+    borderConfig?: TableBorderConfig;
   }) => {
     if (!editor) return;
 
-    editor.chain().focus().insertTable({
-      rows: config.rows,
-      cols: config.cols,
-      withHeaderRow: config.withHeaderRow,
-    }).run();
+    editor
+      .chain()
+      .focus()
+      .insertTable({
+        rows: config.rows,
+        cols: config.cols,
+        withHeaderRow: config.withHeaderRow,
+      })
+      .run();
 
-    let bgHeader = '#fdf2f8';
-    let borderStyle = '1px solid #cbd5e1';
-
-    if (config.preset === 'striped') bgHeader = '#f1f5f9';
-    if (config.preset === 'accent-header') bgHeader = '#e20074';
-    if (config.preset === 'minimal') borderStyle = '1px solid #e2e8f0';
-
-    if (config.preset === 'accent-header') {
-      editor
-        .chain()
-        .focus()
-        .setCellAttribute('backgroundColor', bgHeader)
-        .run();
-    }
+    applyTablePresetToActiveTable(editor, config.preset, config.borderConfig);
 
     setIsInTable(true);
     setIsTableModalOpen(false);

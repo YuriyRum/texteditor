@@ -42,13 +42,13 @@ export function cleanHtmlForOutlook(rawHtml: string, defaultFont: string = 'Cali
   // Format Tables for Outlook compatibility
   const tables = doc.querySelectorAll('table');
   tables.forEach((table) => {
-    table.setAttribute('border', '1');
+    table.setAttribute('border', '0');
     table.setAttribute('cellpadding', '8');
     table.setAttribute('cellspacing', '0');
 
     let existingStyle = table.getAttribute('style') || '';
     if (!existingStyle.includes('border-collapse')) {
-      existingStyle += ' border-collapse: collapse; width: 100%; max-width: 100%; border: 1px solid #cbd5e1; margin: 12px 0;';
+      existingStyle += ' border-collapse: collapse; width: 100%; max-width: 100%; margin: 12px 0;';
     }
     table.setAttribute('style', existingStyle.trim());
 
@@ -101,6 +101,22 @@ export function cleanHtmlForOutlook(rawHtml: string, defaultFont: string = 'Cali
       aStyle += ' color: #0078d4; text-decoration: underline;';
     }
     a.setAttribute('style', aStyle.trim());
+  });
+
+  // Images formatting for Outlook compatibility
+  const images = doc.querySelectorAll('img');
+  images.forEach((img) => {
+    img.setAttribute('border', '0');
+    const rawW = img.getAttribute('width') || img.style.width || '';
+    const rawH = img.getAttribute('height') || img.style.height || '';
+    const numW = rawW.replace(/[^\d.]/g, '');
+    const numH = rawH.replace(/[^\d.]/g, '');
+    if (numW) {
+      img.setAttribute('width', String(Math.round(Number(numW))));
+    }
+    if (numH) {
+      img.setAttribute('height', String(Math.round(Number(numH))));
+    }
   });
 
   // Wrap in Outlook friendly container

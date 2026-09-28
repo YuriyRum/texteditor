@@ -9,9 +9,17 @@ import {
   Columns3,
   Trash2,
   Table as TableIcon,
+  EyeOff,
+  Grid3X3,
 } from 'lucide-react';
 import { Editor } from '@tiptap/react';
 import { EmailAttachment } from '../types';
+import {
+  applyTableBorderConfig,
+  buildCellBorderCss,
+  detectCurrentTableBorderConfig,
+  syncNewTableCellsBorder,
+} from '../utils/tableBorderUtils';
 
 interface AttachmentContextMenuProps {
   isOpen: boolean;
@@ -98,7 +106,9 @@ export const AttachmentContextMenu: React.FC<AttachmentContextMenuProps> = ({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
+                const refCss = buildCellBorderCss(detectCurrentTableBorderConfig(editor));
                 editor.chain().focus().addRowBefore().run();
+                syncNewTableCellsBorder(editor, refCss);
                 onClose();
               }}
               className="w-full px-3 py-1.5 text-left hover:bg-magenta-50 flex items-center gap-2 text-slate-700 transition"
@@ -111,7 +121,9 @@ export const AttachmentContextMenu: React.FC<AttachmentContextMenuProps> = ({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
+                const refCss = buildCellBorderCss(detectCurrentTableBorderConfig(editor));
                 editor.chain().focus().addRowAfter().run();
+                syncNewTableCellsBorder(editor, refCss);
                 onClose();
               }}
               className="w-full px-3 py-1.5 text-left hover:bg-magenta-50 flex items-center gap-2 text-slate-700 transition"
@@ -139,7 +151,9 @@ export const AttachmentContextMenu: React.FC<AttachmentContextMenuProps> = ({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
+                const refCss = buildCellBorderCss(detectCurrentTableBorderConfig(editor));
                 editor.chain().focus().addColumnBefore().run();
+                syncNewTableCellsBorder(editor, refCss);
                 onClose();
               }}
               className="w-full px-3 py-1.5 text-left hover:bg-magenta-50 flex items-center gap-2 text-slate-700 transition"
@@ -152,7 +166,9 @@ export const AttachmentContextMenu: React.FC<AttachmentContextMenuProps> = ({
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
+                const refCss = buildCellBorderCss(detectCurrentTableBorderConfig(editor));
                 editor.chain().focus().addColumnAfter().run();
+                syncNewTableCellsBorder(editor, refCss);
                 onClose();
               }}
               className="w-full px-3 py-1.5 text-left hover:bg-magenta-50 flex items-center gap-2 text-slate-700 transition"
@@ -172,6 +188,46 @@ export const AttachmentContextMenu: React.FC<AttachmentContextMenuProps> = ({
             >
               <Trash2 className="w-3.5 h-3.5 text-rose-500 shrink-0" />
               <span>Delete Column</span>
+            </button>
+
+            <div className="h-[1px] bg-slate-100 my-1" />
+
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                applyTableBorderConfig(editor, {
+                  width: '0px',
+                  style: 'none',
+                  color: '#cbd5e1',
+                  sides: 'none',
+                  scope: 'table',
+                });
+                onClose();
+              }}
+              className="w-full px-3 py-1.5 text-left hover:bg-magenta-50 flex items-center gap-2 text-slate-700 transition"
+            >
+              <EyeOff className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <span>Make Borders Invisible</span>
+            </button>
+
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                applyTableBorderConfig(editor, {
+                  width: '1px',
+                  style: 'solid',
+                  color: '#cbd5e1',
+                  sides: 'all',
+                  scope: 'table',
+                });
+                onClose();
+              }}
+              className="w-full px-3 py-1.5 text-left hover:bg-magenta-50 flex items-center gap-2 text-slate-700 transition"
+            >
+              <Grid3X3 className="w-3.5 h-3.5 text-magenta-600 shrink-0" />
+              <span>Restore Standard Borders</span>
             </button>
 
             <div className="h-[1px] bg-slate-100 my-1" />
