@@ -50,10 +50,11 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
   // Saved templates state (normalized so images are stored separately and referenced via cid:)
   const [templates, setTemplates] = useState<EmailTemplate[]>(() => {
     const saved = localStorage.getItem('email_templates');
-    if (saved) {
+    if (saved !== null) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
+          if (parsed.length === 0) return [];
           const cleaned = parsed.map((t: EmailTemplate) => ({
             ...t,
             subject: t.subject ? t.subject.replace(/\{\{([^{}\r\n]+)\}\}/g, '&$1&') : '',
@@ -68,16 +69,19 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
     return normalizeTemplatesWithSeparateImages(DEFAULT_TEMPLATES);
   });
 
-  const [activeTemplateId, setActiveTemplateId] = useState<string>(DEFAULT_TEMPLATES[0].id);
+  const [activeTemplateId, setActiveTemplateId] = useState<string>(() => templates[0]?.id || '');
 
   // Active template editable fields
-  const currentTemplate = templates.find((t) => t.id === activeTemplateId) || templates[0] || DEFAULT_TEMPLATES[0];
+  const currentTemplate =
+    templates.find((t) => t.id === activeTemplateId) || templates[0] || null;
 
-  const [templateName, setTemplateName] = useState(currentTemplate.name);
-  const [subject, setSubject] = useState(currentTemplate.subject);
+  const [templateName, setTemplateName] = useState(() => currentTemplate?.name || '');
+  const [subject, setSubject] = useState(() => currentTemplate?.subject || '');
   // Resolve cid: references to data: URIs for visual editing in the canvas
   const [bodyHtml, setBodyHtml] = useState(() =>
-    resolveCidImagesInHtml(currentTemplate.bodyHtml, currentTemplate.images || [])
+    currentTemplate
+      ? resolveCidImagesInHtml(currentTemplate.bodyHtml, currentTemplate.images || [])
+      : ''
   );
 
   // Editor instance reference for direct programmatic insertions
@@ -109,7 +113,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
 
   // When active template changes, sync inputs and resolve cid: image references for visual editor
   const handleSelectTemplate = (templateId: string, listOverride?: EmailTemplate[]) => {
-    const list = listOverride || templates;
+    const list = listOverride ?? templates;
     const target = list.find((t) => t.id === templateId);
     if (!target) return;
     const visualHtml = resolveCidImagesInHtml(target.bodyHtml, target.images || []);
@@ -127,30 +131,50 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
   const handleSaveTemplate = () => {
     const { cidHtml, images } = extractImagesFromHtmlToCid(
       bodyHtml,
-      currentTemplate.images || []
+      currentTemplate?.images || []
     );
 
-    setTemplates((prev) =>
-      prev.map((t) =>
-        t.id === activeTemplateId
-          ? {
-              ...t,
-              name: templateName,
-              subject,
-              bodyHtml: cidHtml,
-              images,
-              updatedAt: new Date().toISOString().split('T')[0],
-            }
-          : t
-      )
-    );
+    const effectiveName = templateName.trim() || 'Untitled Email Template';
+
+    if (!currentTemplate || !templates.some((t) => t.id === activeTemplateId)) {
+      const newId = `template-${Date.now()}`;
+      const newTpl: EmailTemplate = {
+        id: newId,
+        name: effectiveName,
+        subject,
+        bodyHtml: cidHtml,
+        images,
+        updatedAt: new Date().toISOString().split('T')[0],
+      };
+      setTemplates([newTpl]);
+      setActiveTemplateId(newId);
+      setTemplateName(effectiveName);
+    } else {
+      setTemplates((prev) =>
+        prev.map((t) =>
+          t.id === activeTemplateId
+            ? {
+                ...t,
+                name: effectiveName,
+                subject,
+                bodyHtml: cidHtml,
+                images,
+                updatedAt: new Date().toISOString().split('T')[0],
+              }
+            : t
+        )
+      );
+      if (effectiveName !== templateName) {
+        setTemplateName(effectiveName);
+      }
+    }
 
     if (images.length > 0) {
       showToast(
-        `Saved "${templateName}" (${images.length} image object${images.length === 1 ? '' : 's'} stored separately with cid: refs)`
+        `Saved "${effectiveName}" (${images.length} image object${images.length === 1 ? '' : 's'} stored separately with cid: refs)`
       );
     } else {
-      showToast(`Template "${templateName}" saved!`);
+      showToast(`Template "${effectiveName}" saved!`);
     }
   };
 
@@ -186,13 +210,14 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
   const handleDuplicateTemplate = () => {
     const { cidHtml, images } = extractImagesFromHtmlToCid(
       bodyHtml,
-      currentTemplate.images || []
+      currentTemplate?.images || []
     );
     const copyId = `template-${Date.now()}`;
+    const baseName = templateName.trim() || 'Untitled Email Template';
     const copyTemplate: EmailTemplate = {
-      ...currentTemplate,
+      ...(currentTemplate || {}),
       id: copyId,
-      name: `${templateName} (Copy)`,
+      name: `${baseName} (Copy)`,
       subject,
       bodyHtml: cidHtml,
       images,
@@ -205,26 +230,51 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
     showToast('Duplicated template with CID image references');
   };
 
-  // Delete current template
+  // Delete a template (supports deleting any template, including the last one)
   const handleDeleteTemplate = (idToDelete: string) => {
-    if (templates.length <= 1) {
-      showToast('Cannot delete the only template.');
-      return;
-    }
     const remaining = templates.filter((t) => t.id !== idToDelete);
     setTemplates(remaining);
-    handleSelectTemplate(remaining[0].id, remaining);
-    showToast('Template deleted');
+    if (remaining.length > 0) {
+      const nextTarget =
+        idToDelete === activeTemplateId
+          ? remaining[0]
+          : remaining.find((t) => t.id === activeTemplateId) || remaining[0];
+      handleSelectTemplate(nextTarget.id, remaining);
+      showToast('Template deleted');
+    } else {
+      setActiveTemplateId('');
+      setTemplateName('');
+      setSubject('');
+      setBodyHtml('');
+      if (editorInstance) {
+        editorInstance.commands.setContent('');
+      }
+      showToast('All templates deleted');
+    }
+  };
+
+  // Delete all templates from the builder library at once
+  const handleDeleteAllTemplates = () => {
+    setTemplates([]);
+    setActiveTemplateId('');
+    setTemplateName('');
+    setSubject('');
+    setBodyHtml('');
+    if (editorInstance) {
+      editorInstance.commands.setContent('');
+    }
+    showToast('All templates deleted');
   };
 
   // Export current template as JSON file (with separate images[] objects and cid: references in bodyHtml)
   const handleExportTemplate = () => {
     const { cidHtml, images } = extractImagesFromHtmlToCid(
       bodyHtml,
-      currentTemplate.images || []
+      currentTemplate?.images || []
     );
+    const exportName = templateName.trim() || 'email-template';
     const dataToExport = {
-      name: templateName,
+      name: exportName,
       subject,
       bodyHtml: cidHtml,
       images,
@@ -236,7 +286,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${templateName.toLowerCase().replace(/\s+/g, '-')}-template.json`;
+    a.download = `${exportName.toLowerCase().replace(/\s+/g, '-')}-template.json`;
     a.click();
     URL.revokeObjectURL(url);
     showToast(`Exported JSON (${images.length} separate CID image object${images.length === 1 ? '' : 's'})`);
@@ -247,13 +297,14 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
     const { mhtContent, images } = generateOutlookMhtDocument({
       subject,
       bodyHtml,
-      images: currentTemplate.images || [],
+      images: currentTemplate?.images || [],
     });
+    const exportName = templateName.trim() || 'email-template';
     const blob = new Blob([mhtContent], { type: 'message/rfc822' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${templateName.toLowerCase().replace(/\s+/g, '-')}.mht`;
+    a.download = `${exportName.toLowerCase().replace(/\s+/g, '-')}.mht`;
     a.click();
     URL.revokeObjectURL(url);
     showToast(`Exported Outlook .MHT (${images.length} embedded CID image part${images.length === 1 ? '' : 's'})`);
@@ -353,8 +404,8 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
 
   // Detected separate CID image objects in current active template
   const activeImageObjects = useMemo(() => {
-    return extractImagesFromHtmlToCid(bodyHtml, currentTemplate.images || []).images;
-  }, [bodyHtml, currentTemplate.images]);
+    return extractImagesFromHtmlToCid(bodyHtml, currentTemplate?.images || []).images;
+  }, [bodyHtml, currentTemplate?.images]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-slate-100 overflow-hidden font-sans">
@@ -396,14 +447,19 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
           <div className="relative">
             <select
               value={activeTemplateId}
+              disabled={templates.length === 0}
               onChange={(e) => handleSelectTemplate(e.target.value)}
-              className="appearance-none bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 pl-3 pr-8 py-1.5 focus:outline-none focus:border-magenta-500 cursor-pointer max-w-[200px] truncate"
+              className="appearance-none bg-slate-50 hover:bg-slate-100 disabled:opacity-60 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 pl-3 pr-8 py-1.5 focus:outline-none focus:border-magenta-500 cursor-pointer max-w-[200px] truncate"
             >
-              {templates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
+              {templates.length === 0 ? (
+                <option value="">No templates saved</option>
+              ) : (
+                templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))
+              )}
             </select>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
@@ -445,6 +501,16 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
             >
               <Download className="w-4 h-4" />
             </button>
+            {currentTemplate && (
+              <button
+                type="button"
+                onClick={() => handleDeleteTemplate(currentTemplate.id)}
+                className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                title="Delete Current Template"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -512,17 +578,28 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
             /* Expanded Library Contents (ONLY LIBRARY) */
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
               {/* Library Header */}
-              <div className="p-3 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FolderOpen className="w-4 h-4 text-magenta-600" />
-                  <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              <div className="p-3 border-b border-slate-200 bg-slate-50/70 flex items-center justify-between gap-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <FolderOpen className="w-4 h-4 text-magenta-600 shrink-0" />
+                  <span className="text-xs font-bold text-slate-800 uppercase tracking-wider truncate">
                     Template Library
                   </span>
-                  <span className="text-[10px] font-semibold text-slate-500 bg-slate-200/70 px-1.5 py-0.5 rounded-full">
+                  <span className="text-[10px] font-semibold text-slate-500 bg-slate-200/70 px-1.5 py-0.5 rounded-full shrink-0">
                     {templates.length}
                   </span>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 shrink-0">
+                  {templates.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleDeleteAllTemplates}
+                      className="p-1 text-rose-600 hover:bg-rose-50 rounded hover:text-rose-700 transition-colors text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                      title="Delete all templates from library"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete All</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={handleNewTemplate}
@@ -568,7 +645,19 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
 
               {/* Saved Templates List Cards */}
               <div className="flex-1 overflow-y-auto p-2.5 space-y-2 bg-slate-50">
-                {filteredTemplates.length === 0 ? (
+                {templates.length === 0 ? (
+                  <div className="p-6 text-center flex flex-col items-center gap-2.5 text-xs text-slate-500">
+                    <p className="text-slate-400">No templates in library.</p>
+                    <button
+                      type="button"
+                      onClick={handleNewTemplate}
+                      className="px-3 py-1.5 bg-magenta-600 hover:bg-magenta-700 text-white font-semibold rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Create New Template</span>
+                    </button>
+                  </div>
+                ) : filteredTemplates.length === 0 ? (
                   <div className="p-6 text-center text-xs text-slate-400">
                     No templates matching "{librarySearchQuery}".
                   </div>
@@ -590,19 +679,17 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
                             {tpl.name}
                           </span>
                           <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100">
-                            {templates.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteTemplate(tpl.id);
-                                }}
-                                className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
-                                title="Delete template"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteTemplate(tpl.id);
+                              }}
+                              className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors cursor-pointer"
+                              title="Delete template"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </div>
 
