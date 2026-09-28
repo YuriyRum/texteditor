@@ -98,14 +98,6 @@ export default function App() {
           <div className="w-8 h-8 rounded-lg bg-magenta-600 flex items-center justify-center text-white shadow-2xs">
             <Mail className="w-4 h-4" />
           </div>
-          <div>
-            <h1 className="text-sm font-bold text-slate-900 tracking-tight leading-tight">
-              Outlook Email Studio
-            </h1>
-            <p className="text-[11px] text-slate-500 leading-none">
-              {appMode === 'builder' ? 'Template Builder & Placeholder Engine' : 'Rich Text Email Editor'}
-            </p>
-          </div>
         </div>
 
         {/* Center: Mode Switcher to separate Standard Editor and Build Mode */}
