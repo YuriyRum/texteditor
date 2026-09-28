@@ -4,7 +4,6 @@ import {
   Plus,
   Save,
   Copy,
-  Eye,
   Sparkles,
   ImageIcon,
   FolderOpen,
@@ -18,7 +17,6 @@ import {
   PanelLeftOpen,
   Tag,
   X,
-  FileArchive,
 } from 'lucide-react';
 
 import {
@@ -29,7 +27,6 @@ import { DEFAULT_IMAGE_PRESETS } from '../../data/defaultPlaceholders';
 import { extractPlaceholders, generateSvgPlaceholder } from '../../utils/placeholderEngine';
 import {
   extractImagesFromHtmlToCid,
-  generateOutlookMhtDocument,
   normalizeTemplatesWithSeparateImages,
   resolveCidImagesInHtml,
   saveImageObjectsToStore,
@@ -37,7 +34,6 @@ import {
 import { isMhtContent, readFileAsMht } from '../../utils/mhtParser';
 
 import { SubjectBuilder } from './SubjectBuilder';
-import { TemplatePreviewModal } from './TemplatePreviewModal';
 import { RichTextEmailEditor } from '../RichTextEmailEditor';
 import { InsertPlaceholderModal } from '../InsertPlaceholderModal';
 
@@ -95,8 +91,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
   const [showImageDrawer, setShowImageDrawer] = useState(false);
   const [isInsertPlaceholderModalOpen, setIsInsertPlaceholderModalOpen] = useState(false);
 
-  // Modals & notifications
-  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  // Notifications
   const [notification, setNotification] = useState<string | null>(null);
 
   const fileImportInputRef = useRef<HTMLInputElement>(null);
@@ -290,24 +285,6 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
     a.click();
     URL.revokeObjectURL(url);
     showToast(`Exported JSON (${images.length} separate CID image object${images.length === 1 ? '' : 's'})`);
-  };
-
-  // Export current template directly as an Outlook .MHT archive (multipart/related with CID image parts)
-  const handleExportMht = () => {
-    const { mhtContent, images } = generateOutlookMhtDocument({
-      subject,
-      bodyHtml,
-      images: currentTemplate?.images || [],
-    });
-    const exportName = templateName.trim() || 'email-template';
-    const blob = new Blob([mhtContent], { type: 'message/rfc822' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${exportName.toLowerCase().replace(/\s+/g, '-')}.mht`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast(`Exported Outlook .MHT (${images.length} embedded CID image part${images.length === 1 ? '' : 's'})`);
   };
 
   // Import template from JSON or Outlook .MHT file
@@ -514,35 +491,16 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
           </div>
         </div>
 
-        {/* Right: Actions (Save, Export MHT & Preview) */}
+        {/* Right: Actions (Save) */}
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handleSaveTemplate}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-magenta-600 hover:bg-magenta-700 rounded-lg transition-colors shadow-2xs cursor-pointer"
             title="Save template and separate image objects with cid: references"
           >
-            <Save className="w-3.5 h-3.5 text-slate-600" />
-            <span className="hidden sm:inline">Save</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleExportMht}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors cursor-pointer shadow-2xs"
-            title="Download as Outlook .MHT file with separate MIME image parts"
-          >
-            <FileArchive className="w-3.5 h-3.5 text-magenta-600" />
-            <span className="hidden sm:inline">Save .MHT</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIsPreviewModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-magenta-600 hover:bg-magenta-700 rounded-lg transition-colors shadow-2xs cursor-pointer"
-          >
-            <Eye className="w-3.5 h-3.5" />
-            <span>Test / Preview</span>
+            <Save className="w-3.5 h-3.5" />
+            <span>Save</span>
           </button>
         </div>
       </header>
@@ -730,17 +688,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
                   title="Export template to JSON (HTML with cid: references + separate image objects)"
                 >
                   <Download className="w-3.5 h-3.5 text-slate-500" />
-                  <span>JSON</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleExportMht}
-                  className="flex-1 py-1.5 px-2 text-xs font-semibold text-magenta-700 hover:text-magenta-900 bg-magenta-50 hover:bg-magenta-100 border border-magenta-200 rounded-lg flex items-center justify-center gap-1 transition-colors cursor-pointer"
-                  title="Export template as Outlook .MHT file with separate MIME image parts"
-                >
-                  <FileArchive className="w-3.5 h-3.5 text-magenta-600" />
-                  <span>.MHT</span>
+                  <span>Export JSON</span>
                 </button>
               </div>
             </div>
@@ -913,14 +861,6 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
               <span className="text-slate-400 hidden sm:inline">
                 Images saved separately with <code>cid:</code> references
               </span>
-              <button
-                type="button"
-                onClick={() => setIsPreviewModalOpen(true)}
-                className="text-xs text-magenta-600 hover:text-magenta-700 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                <Eye className="w-3.5 h-3.5" />
-                <span>Test &amp; Inspect CID / MHT</span>
-              </button>
             </div>
           </div>
         </main>
@@ -932,16 +872,6 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
         onClose={() => setIsInsertPlaceholderModalOpen(false)}
         targetName="email body"
         onInsert={(token) => handleInsertPlaceholderIntoBody(token)}
-      />
-
-      {/* Preview Modal */}
-      <TemplatePreviewModal
-        isOpen={isPreviewModalOpen}
-        onClose={() => setIsPreviewModalOpen(false)}
-        templateName={templateName}
-        subjectTemplate={subject}
-        bodyHtmlTemplate={bodyHtml}
-        templateImages={activeImageObjects}
       />
     </div>
   );

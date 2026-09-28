@@ -22,7 +22,12 @@ import { Toolbar } from './Toolbar';
 import { TableControls } from './TableControls';
 import { InsertTableModal } from './InsertTableModal';
 import { InsertLinkModal } from './InsertLinkModal';
-import { ResizableImageNodeView } from './ResizableImageNodeView';
+import {
+  ResizableImageNodeView,
+  getDraggedImageNodePos,
+  setDraggedImageNodePos,
+} from './ResizableImageNodeView';
+import { NodeSelection } from '@tiptap/pm/state';
 
 import { TablePreset, PredefinedText, EmailAttachment, TableBorderConfig } from '../types';
 import { DEFAULT_PREDEFINED_TEXTS } from '../data/defaultPredefinedTexts';
@@ -222,7 +227,22 @@ const ResizableImage = Image.extend({
     };
   },
   addNodeView() {
-    return ReactNodeViewRenderer(ResizableImageNodeView);
+    return ReactNodeViewRenderer(ResizableImageNodeView, {
+      stopEvent: ({ event }) => {
+        const target = event.target as HTMLElement | null;
+        if (target && target.closest('[data-resize-handle], button')) {
+          return true;
+        }
+        if (
+          event.type.startsWith('drag') ||
+          event.type === 'drop' ||
+          event.type === 'mousedown'
+        ) {
+          return false;
+        }
+        return false;
+      },
+    });
   },
 });
 
@@ -379,7 +399,46 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
         return adaptPastedEmailHtml(html);
       },
       handleDrop(view, event, _slice, moved) {
-        // If repositioning an existing element within the editor, let ProseMirror handle moving
+        // 1. If repositioning an existing image within the editor, move it from the old position to the new drop position
+        let fromPos = getDraggedImageNodePos();
+        setDraggedImageNodePos(null);
+
+        if (
+          fromPos === null &&
+          (moved || (view as unknown as { dragging?: unknown }).dragging) &&
+          view.state.selection instanceof NodeSelection &&
+          view.state.selection.node.type.name === 'image'
+        ) {
+          fromPos = view.state.selection.from;
+        }
+
+        if (fromPos !== null) {
+          const draggedNode = view.state.doc.nodeAt(fromPos);
+          if (draggedNode && draggedNode.type.name === 'image') {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const coords = { left: event.clientX, top: event.clientY };
+            const dropPos = view.posAtCoords(coords);
+            if (!dropPos) return true;
+
+            const targetPos = dropPos.pos;
+            // Dropped right on top of its existing position -> keep in place without duplicating
+            if (targetPos >= fromPos && targetPos <= fromPos + draggedNode.nodeSize) {
+              return true;
+            }
+
+            const tr = view.state.tr;
+            tr.delete(fromPos, fromPos + draggedNode.nodeSize);
+            const mappedInsertPos = tr.mapping.map(targetPos);
+            tr.replaceRangeWith(mappedInsertPos, mappedInsertPos, draggedNode);
+            view.dispatch(tr.scrollIntoView());
+            view.focus();
+            return true;
+          }
+        }
+
+        // If repositioning any other existing element within the editor, let ProseMirror handle moving
         if (moved || (view as unknown as { dragging?: unknown }).dragging) {
           event.stopPropagation();
           return false;
