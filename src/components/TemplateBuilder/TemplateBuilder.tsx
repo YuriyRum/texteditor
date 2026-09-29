@@ -15,6 +15,7 @@ import {
   Search,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
   Tag,
   X,
 } from 'lucide-react';
@@ -94,6 +95,21 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
   const [notification, setNotification] = useState<string | null>(null);
 
   const fileImportInputRef = useRef<HTMLInputElement>(null);
+  const templateTitleInputRef = useRef<HTMLInputElement>(null);
+
+  // Update template title and immediately sync to active template in the library list
+  const handleTemplateNameChange = (newName: string) => {
+    setTemplateName(newName);
+    if (activeTemplateId) {
+      setTemplates((prev) =>
+        prev.map((t) =>
+          t.id === activeTemplateId
+            ? { ...t, name: newName || 'Untitled Email Template' }
+            : t
+        )
+      );
+    }
+  };
 
   // Persist templates to localStorage
   useEffect(() => {
@@ -214,6 +230,10 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
       editorInstance.commands.setContent(newTemplate.bodyHtml);
     }
     showToast('Created new template');
+    setTimeout(() => {
+      templateTitleInputRef.current?.focus();
+      templateTitleInputRef.current?.select();
+    }, 20);
   };
 
   // Duplicate current template (with separate image objects & cid: references)
@@ -459,16 +479,27 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
 
-          {/* Editable Template Name */}
+          {/* Editable Template Title Input */}
           <div className="flex items-center gap-1.5">
-            <input
-              type="text"
-              value={templateName}
-              onChange={(e) => setTemplateName(e.target.value)}
-              placeholder="Template Name..."
-              className="text-sm font-bold text-slate-900 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-magenta-500 focus:outline-none px-1 py-0.5 transition-colors"
-              title="Click to rename template"
-            />
+            <label
+              htmlFor="template-title-input"
+              className="text-[11px] font-bold text-slate-500 uppercase tracking-wider hidden md:inline"
+            >
+              Title:
+            </label>
+            <div className="relative flex items-center">
+              <Pencil className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
+              <input
+                id="template-title-input"
+                ref={templateTitleInputRef}
+                type="text"
+                value={templateName}
+                onChange={(e) => handleTemplateNameChange(e.target.value)}
+                placeholder="Enter template title..."
+                className="pl-8 pr-3 py-1 text-xs sm:text-sm font-bold text-slate-900 bg-white border border-slate-300 hover:border-magenta-400 focus:border-magenta-500 focus:ring-2 focus:ring-magenta-500/20 focus:outline-none rounded-lg transition-all min-w-[200px] sm:min-w-[240px]"
+                title="Edit template title"
+              />
+            </div>
           </div>
 
           <div className="hidden sm:flex items-center gap-1">
@@ -655,6 +686,23 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
                             {tpl.name}
                           </span>
                           <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (tpl.id !== activeTemplateId) {
+                                  handleSelectTemplate(tpl.id);
+                                }
+                                setTimeout(() => {
+                                  templateTitleInputRef.current?.focus();
+                                  templateTitleInputRef.current?.select();
+                                }, 20);
+                              }}
+                              className="p-1 text-slate-400 hover:text-magenta-600 rounded transition-colors cursor-pointer"
+                              title="Rename template"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
                             <button
                               type="button"
                               onClick={(e) => {
