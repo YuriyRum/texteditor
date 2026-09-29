@@ -22,12 +22,14 @@ export function formatPlaceholderToken(rawId: string): string {
  */
 export function extractPlaceholders(text: string): string[] {
   if (!text) return [];
+  // Strip HTML tags (including large <img src="data:..."> attributes) before scanning for placeholders
+  const cleanText = text.includes('<') ? text.replace(/<[^>]*>/g, ' ') : text;
   const matches = new Set<string>();
   let match: RegExpExecArray | null;
 
   // Extract &key& (single ampersands)
   const ampersandRegex = new RegExp(AMPERSAND_PLACEHOLDER_REGEX);
-  while ((match = ampersandRegex.exec(text)) !== null) {
+  while ((match = ampersandRegex.exec(cleanText)) !== null) {
     const key = match[1].trim();
     // Exclude common HTML entity fragments like &amp; &nbsp; &lt; &gt; &quot;
     if (
@@ -41,7 +43,7 @@ export function extractPlaceholders(text: string): string[] {
 
   // Also extract legacy {{key}} if present
   const curlyRegex = new RegExp(CURLY_PLACEHOLDER_REGEX);
-  while ((match = curlyRegex.exec(text)) !== null) {
+  while ((match = curlyRegex.exec(cleanText)) !== null) {
     const key = match[1].trim();
     if (key && key.length < 50) {
       matches.add(key);

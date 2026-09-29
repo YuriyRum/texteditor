@@ -31,11 +31,29 @@ import {
   resolveCidImagesInHtml,
   saveImageObjectsToStore,
 } from '../../utils/outlookTemplateSerializer';
+import { cleanHtmlForOutlook } from '../../utils/outlookFormatter';
 import { isMhtContent, readFileAsMht } from '../../utils/mhtParser';
 
 import { SubjectBuilder } from './SubjectBuilder';
 import { RichTextEmailEditor } from '../RichTextEmailEditor';
 import { InsertPlaceholderModal } from '../InsertPlaceholderModal';
+
+// Precompute SVG preset cards once so re-renders never regenerate SVG strings
+const PRESET_IMAGE_CARDS = DEFAULT_IMAGE_PRESETS.map((preset) => ({
+  preset,
+  svgData: generateSvgPlaceholder(
+    preset.width,
+    preset.height,
+    preset.label,
+    `${preset.width} × ${preset.height}`,
+    {
+      bgColor: '#fdf2f8',
+      textColor: '#9d174d',
+      accentColor: '#e20074',
+      icon: preset.type,
+    }
+  ),
+}));
 
 interface TemplateBuilderProps {
   onUseTemplateInEditor?: (template: { subject: string; html: string }) => void;
@@ -122,10 +140,26 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
     }
   };
 
+  // Read the freshest HTML directly from the live editor instance when saving/duplicating/exporting
+  const getLatestBodyHtml = () => {
+    if (editorInstance && !editorInstance.isDestroyed) {
+      const rawHtml = editorInstance.getHTML();
+      const currentFont =
+        editorInstance.getAttributes('textStyle').fontFamily || 'Calibri, sans-serif';
+      const cleaned = cleanHtmlForOutlook(rawHtml, currentFont);
+      if (cleaned !== bodyHtml) {
+        setBodyHtml(cleaned);
+      }
+      return cleaned;
+    }
+    return bodyHtml;
+  };
+
   // Save current changes to active template: extract images separately & store cid: references in bodyHtml
   const handleSaveTemplate = () => {
+    const latestHtml = getLatestBodyHtml();
     const { cidHtml, images } = extractImagesFromHtmlToCid(
-      bodyHtml,
+      latestHtml,
       currentTemplate?.images || []
     );
 
@@ -203,8 +237,9 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
 
   // Duplicate current template (with separate image objects & cid: references)
   const handleDuplicateTemplate = () => {
+    const latestHtml = getLatestBodyHtml();
     const { cidHtml, images } = extractImagesFromHtmlToCid(
-      bodyHtml,
+      latestHtml,
       currentTemplate?.images || []
     );
     const copyId = `template-${Date.now()}`;
@@ -263,8 +298,9 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
 
   // Export current template as JSON file (with separate images[] objects and cid: references in bodyHtml)
   const handleExportTemplate = () => {
+    const latestHtml = getLatestBodyHtml();
     const { cidHtml, images } = extractImagesFromHtmlToCid(
-      bodyHtml,
+      latestHtml,
       currentTemplate?.images || []
     );
     const exportName = templateName.trim() || 'email-template';
@@ -367,22 +403,31 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
   };
 
   // Filter templates in library
-  const filteredTemplates = templates.filter(
-    (t) =>
-      t.name.toLowerCase().includes(librarySearchQuery.toLowerCase()) ||
-      t.subject.toLowerCase().includes(librarySearchQuery.toLowerCase()) ||
-      (t.category && t.category.toLowerCase().includes(librarySearchQuery.toLowerCase()))
+  const filteredTemplates = useMemo(() => {
+    const q = librarySearchQuery.toLowerCase();
+    if (!q) return templates;
+    return templates.filter(
+      (t) =>
+        t.name.toLowerCase().includes(q) ||
+        t.subject.toLowerCase().includes(q) ||
+        (t.category && t.category.toLowerCase().includes(q))
+    );
+  }, [templates, librarySearchQuery]);
+
+  // Detected placeholders in current active template (memoized)
+  const subjectPlaceholders = useMemo(() => extractPlaceholders(subject), [subject]);
+  const bodyPlaceholders = useMemo(() => extractPlaceholders(bodyHtml), [bodyHtml]);
+  const totalPlaceholders = useMemo(
+    () => new Set([...subjectPlaceholders, ...bodyPlaceholders]).size,
+    [subjectPlaceholders, bodyPlaceholders]
   );
 
-  // Detected placeholders in current active template
-  const subjectPlaceholders = extractPlaceholders(subject);
-  const bodyPlaceholders = extractPlaceholders(bodyHtml);
-  const totalPlaceholders = Array.from(new Set([...subjectPlaceholders, ...bodyPlaceholders])).length;
-
-  // Detected separate CID image objects in current active template
-  const activeImageObjects = useMemo(() => {
-    return extractImagesFromHtmlToCid(bodyHtml, currentTemplate?.images || []).images;
-  }, [bodyHtml, currentTemplate?.images]);
+  // Fast image count for status bar without DOM parsing or localStorage writes on every edit
+  const activeImageCount = useMemo(() => {
+    if (!bodyHtml) return 0;
+    const matches = bodyHtml.match(/<img\b/gi);
+    return matches ? matches.length : 0;
+  }, [bodyHtml]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-slate-100 overflow-hidden font-sans">
@@ -765,20 +810,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
 
               {/* Grid of Draggable Image Cards */}
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 overflow-x-auto">
-                {DEFAULT_IMAGE_PRESETS.map((preset) => {
-                  const svgData = generateSvgPlaceholder(
-                    preset.width,
-                    preset.height,
-                    preset.label,
-                    `${preset.width} × ${preset.height}`,
-                    {
-                      bgColor: '#fdf2f8',
-                      textColor: '#9d174d',
-                      accentColor: '#e20074',
-                      icon: preset.type,
-                    }
-                  );
-
+                {PRESET_IMAGE_CARDS.map(({ preset, svgData }) => {
                   return (
                     <div
                       key={preset.id}
@@ -826,12 +858,8 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
             <RichTextEmailEditor
               value={bodyHtml}
               predefinedTexts={[]}
-              onChange={(data) => {
-                setBodyHtml(data.html);
-              }}
-              onEditorReady={(editor) => {
-                setEditorInstance(editor);
-              }}
+              onChangeHtml={setBodyHtml}
+              onEditorReady={setEditorInstance}
               className="flex-1 min-h-0 h-full"
             />
           </div>
@@ -853,7 +881,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
                 title="Images are stored as separate objects and referenced via cid: in saved template HTML and MHT exports"
               >
                 <ImageIcon className="w-3 h-3 text-magenta-600" />
-                {activeImageObjects.length} CID image {activeImageObjects.length === 1 ? 'object' : 'objects'}
+                {activeImageCount} CID image {activeImageCount === 1 ? 'object' : 'objects'}
               </span>
             </div>
 

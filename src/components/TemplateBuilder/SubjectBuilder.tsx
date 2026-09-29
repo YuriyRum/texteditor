@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import { Tag, ChevronDown, ChevronRight, ChevronUp } from 'lucide-react';
 import { extractPlaceholders } from '../../utils/placeholderEngine';
 import { InsertPlaceholderModal } from '../InsertPlaceholderModal';
@@ -11,7 +11,7 @@ interface SubjectBuilderProps {
   onInsertPlaceholderIntoSubject?: (key: string) => void;
 }
 
-export const SubjectBuilder: React.FC<SubjectBuilderProps> = ({
+export const SubjectBuilder: React.FC<SubjectBuilderProps> = React.memo(({
   subject,
   onChangeSubject,
 }) => {
@@ -20,7 +20,7 @@ export const SubjectBuilder: React.FC<SubjectBuilderProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Extract detected placeholders in subject (&key&)
-  const detectedPlaceholders = extractPlaceholders(subject);
+  const detectedPlaceholders = useMemo(() => extractPlaceholders(subject), [subject]);
 
   const handleInsertPlaceholder = (token: string) => {
     if (isCollapsed) {
@@ -216,4 +216,4 @@ export const SubjectBuilder: React.FC<SubjectBuilderProps> = ({
       />
     </div>
   );
-};
+});

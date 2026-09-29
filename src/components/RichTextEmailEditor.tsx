@@ -332,10 +332,32 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
   // Track controlled value ref to prevent redundant updates
   const isFirstRenderRef = useRef(true);
   const lastEmittedHtmlRef = useRef<string | null>(null);
+  const updateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onChangeRef = useRef(onChange);
+  const onChangeHtmlRef = useRef(onChangeHtml);
+  const onChangeTextRef = useRef(onChangeText);
+  onChangeRef.current = onChange;
+  onChangeHtmlRef.current = onChangeHtml;
+  onChangeTextRef.current = onChangeText;
 
-  const editor = useEditor({
-    editable: !readOnly,
-    extensions: [
+  const emitEditorChanges = (currentEditor: Editor) => {
+    if (currentEditor.isDestroyed) return;
+    const rawHtml = currentEditor.getHTML();
+    const currentFont =
+      currentEditor.getAttributes('textStyle').fontFamily || 'Calibri, sans-serif';
+    const cleaned = cleanHtmlForOutlook(rawHtml, currentFont);
+    lastEmittedHtmlRef.current = cleaned;
+
+    const needsPlainText = Boolean(onChangeRef.current || onChangeTextRef.current);
+    const pureText = needsPlainText ? convertHtmlToPlainText(rawHtml) : '';
+
+    onChangeRef.current?.({ html: cleaned, text: pureText });
+    onChangeHtmlRef.current?.(cleaned);
+    onChangeTextRef.current?.(pureText);
+  };
+
+  const extensions = useMemo(
+    () => [
       StarterKit.configure({
         heading: {
           levels: [1, 2, 3],
@@ -389,16 +411,19 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
         placeholder,
       }),
     ],
-    content: initialContent,
-    editorProps: {
+    [placeholder]
+  );
+
+  const editorProps = useMemo(
+    () => ({
       attributes: {
         class: `outline-none text-slate-800 text-sm leading-relaxed p-6 bg-white min-h-full flex-1 w-full max-w-full break-words overflow-wrap-break-word box-border`,
         style: `min-height: 100%; max-width: 100%; word-break: break-word; overflow-wrap: break-word;`,
       },
-      transformPastedHTML(html) {
+      transformPastedHTML(html: string) {
         return adaptPastedEmailHtml(html);
       },
-      handleDrop(view, event, _slice, moved) {
+      handleDrop(view: Parameters<NonNullable<Parameters<typeof useEditor>[0]>['editorProps']['handleDrop']>[0], event: DragEvent, _slice: unknown, moved: boolean) {
         // 1. If repositioning an existing image within the editor, move it from the old position to the new drop position
         let fromPos = getDraggedImageNodePos();
         setDraggedImageNodePos(null);
@@ -494,7 +519,7 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
 
         return false;
       },
-      handlePaste(view, event) {
+      handlePaste(view: Parameters<NonNullable<Parameters<typeof useEditor>[0]>['editorProps']['handlePaste']>[0], event: ClipboardEvent) {
         if (event.clipboardData?.files && event.clipboardData.files.length > 0) {
           const file = event.clipboardData.files[0];
           if (file.type.startsWith('image/')) {
@@ -516,25 +541,46 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
         }
         return false;
       },
-    },
+    }),
+    []
+  );
+
+  const editor = useEditor({
+    editable: !readOnly,
+    shouldRerenderOnTransaction: false,
+    extensions,
+    content: initialContent,
+    editorProps,
     onUpdate({ editor: currentEditor }) {
-      const rawHtml = currentEditor.getHTML();
-      const currentFont = currentEditor.getAttributes('textStyle').fontFamily || 'Calibri, sans-serif';
-      const cleaned = cleanHtmlForOutlook(rawHtml, currentFont);
-      const pureText = convertHtmlToPlainText(rawHtml);
-
-      lastEmittedHtmlRef.current = cleaned;
-
-      // Trigger callbacks
-      onChange?.({ html: cleaned, text: pureText });
-      onChangeHtml?.(cleaned);
-      onChangeText?.(pureText);
+      if (updateDebounceRef.current) {
+        clearTimeout(updateDebounceRef.current);
+      }
+      updateDebounceRef.current = setTimeout(() => {
+        updateDebounceRef.current = null;
+        emitEditorChanges(currentEditor);
+      }, 150);
+    },
+    onBlur({ editor: currentEditor }) {
+      if (updateDebounceRef.current) {
+        clearTimeout(updateDebounceRef.current);
+        updateDebounceRef.current = null;
+        emitEditorChanges(currentEditor);
+      }
     },
     onSelectionUpdate({ editor: currentEditor }) {
       const active = currentEditor.isActive('table');
       setIsInTable((prev) => (prev !== active ? active : prev));
     },
   });
+
+  // Clean up any pending debounced update on unmount
+  useEffect(() => {
+    return () => {
+      if (updateDebounceRef.current) {
+        clearTimeout(updateDebounceRef.current);
+      }
+    };
+  }, []);
 
   // Notify parent component when editor instance is ready
   useEffect(() => {
@@ -548,6 +594,11 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
     if (!editor || value === undefined) return;
     if (isFirstRenderRef.current) {
       isFirstRenderRef.current = false;
+      return;
+    }
+
+    // Short-circuit immediately if this value is what the editor just emitted
+    if (value === lastEmittedHtmlRef.current) {
       return;
     }
 
@@ -576,7 +627,7 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
     }
 
     const currentRaw = editor.getHTML();
-    if (value !== currentRaw && value !== lastEmittedHtmlRef.current) {
+    if (value !== currentRaw) {
       editor.commands.setContent(value);
     }
     if (!readOnly && !editor.isEditable) {
