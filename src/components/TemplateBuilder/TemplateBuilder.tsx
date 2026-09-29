@@ -23,8 +23,7 @@ import {
   EmailTemplate,
 } from '../../types';
 import { DEFAULT_TEMPLATES } from '../../data/defaultTemplates';
-import { DEFAULT_IMAGE_PRESETS } from '../../data/defaultPlaceholders';
-import { extractPlaceholders, generateSvgPlaceholder } from '../../utils/placeholderEngine';
+import { extractPlaceholders } from '../../utils/placeholderEngine';
 import {
   extractImagesFromHtmlToCid,
   normalizeTemplatesWithSeparateImages,
@@ -37,23 +36,6 @@ import { isMhtContent, readFileAsMht } from '../../utils/mhtParser';
 import { SubjectBuilder } from './SubjectBuilder';
 import { RichTextEmailEditor } from '../RichTextEmailEditor';
 import { InsertPlaceholderModal } from '../InsertPlaceholderModal';
-
-// Precompute SVG preset cards once so re-renders never regenerate SVG strings
-const PRESET_IMAGE_CARDS = DEFAULT_IMAGE_PRESETS.map((preset) => ({
-  preset,
-  svgData: generateSvgPlaceholder(
-    preset.width,
-    preset.height,
-    preset.label,
-    `${preset.width} × ${preset.height}`,
-    {
-      bgColor: '#fdf2f8',
-      textColor: '#9d174d',
-      accentColor: '#e20074',
-      icon: preset.type,
-    }
-  ),
-}));
 
 interface TemplateBuilderProps {
   onUseTemplateInEditor?: (template: { subject: string; html: string }) => void;
@@ -105,8 +87,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [librarySearchQuery, setLibrarySearchQuery] = useState('');
 
-  // Dropdown / drawer menus for Editor Builder toolbar
-  const [showImageDrawer, setShowImageDrawer] = useState(false);
+  // Modal for inserting placeholder into Editor Body
   const [isInsertPlaceholderModalOpen, setIsInsertPlaceholderModalOpen] = useState(false);
 
   // Notifications
@@ -387,19 +368,11 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
     e.target.value = '';
   };
 
-  // Insert placeholder into Editor Body with single &&
   // Insert placeholder token (single && format e.g. &name&) into Editor Body
   const handleInsertPlaceholderIntoBody = (token: string) => {
     if (!editorInstance) return;
     editorInstance.chain().focus().insertContent(` ${token} `).run();
     showToast(`Inserted placeholder ${token}`);
-  };
-
-  // Insert image preset into Editor Body
-  const handleInsertImageIntoBody = (src: string, alt?: string) => {
-    if (!editorInstance) return;
-    editorInstance.chain().focus().setImage({ src, alt: alt || 'Email Image' }).run();
-    showToast('Inserted image into email');
   };
 
   // Filter templates in library
@@ -748,7 +721,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
             onChangeSubject={setSubject}
           />
 
-          {/* Builder Insertion Utility Bar (Placeholders, Images) */}
+          {/* Builder Insertion Utility Bar (Placeholders) */}
           <div className="bg-slate-50 border-b border-slate-200 px-4 py-2 flex items-center justify-between gap-2 flex-wrap shrink-0">
             <div className="flex items-center gap-2 flex-wrap">
               {/* Insert Placeholder Button with manual ID */}
@@ -761,97 +734,14 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
                 <Tag className="w-3.5 h-3.5 text-magenta-600" />
                 <span>+ Insert Placeholder</span>
               </button>
-
-              {/* Images & Drag-and-Drop Drawer Toggle */}
-              <button
-                type="button"
-                onClick={() => setShowImageDrawer(!showImageDrawer)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg shadow-2xs transition-colors cursor-pointer border ${
-                  showImageDrawer
-                    ? 'bg-magenta-600 text-white border-magenta-700'
-                    : 'bg-white text-slate-700 hover:bg-magenta-50 hover:text-magenta-700 border-slate-200'
-                }`}
-                title="Toggle Draggable Image Presets drawer"
-              >
-                <ImageIcon className="w-3.5 h-3.5" />
-                <span>Images (Drag &amp; Drop)</span>
-                <ChevronDown className={`w-3 h-3 transition-transform ${showImageDrawer ? 'rotate-180' : ''}`} />
-              </button>
             </div>
 
             {/* Quick helper tag */}
             <div className="text-[11px] text-slate-500 hidden lg:flex items-center gap-1 font-medium">
-              <span>💡 Images drag &amp; drop in any position · Placeholders use</span>
+              <span>💡 Placeholders use</span>
               <code className="text-magenta-700 font-bold bg-magenta-50 px-1 py-0.5 rounded">&amp;id&amp;</code>
             </div>
           </div>
-
-          {/* Draggable Images Drawer (When Opened) */}
-          {showImageDrawer && (
-            <div className="bg-white border-b border-slate-200 p-3 shadow-inner z-10 animate-in slide-from-top-2 duration-150">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                    <ImageIcon className="w-3.5 h-3.5 text-magenta-600" />
-                    Draggable Image Presets
-                  </span>
-                  <span className="text-[11px] text-magenta-700 bg-magenta-50 px-2 py-0.5 rounded-full border border-magenta-200 font-medium">
-                    🖐️ Drag any card directly into the email body at any position!
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowImageDrawer(false)}
-                  className="p-1 text-slate-400 hover:text-slate-600 rounded"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* Grid of Draggable Image Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 overflow-x-auto">
-                {PRESET_IMAGE_CARDS.map(({ preset, svgData }) => {
-                  return (
-                    <div
-                      key={preset.id}
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.clearData();
-                        e.dataTransfer.setData('application/x-image-url', svgData);
-                        e.dataTransfer.effectAllowed = 'copy';
-                      }}
-                      className="bg-slate-50 hover:bg-magenta-50/50 p-2 rounded-xl border border-slate-200 hover:border-magenta-300 transition-all flex flex-col gap-1.5 cursor-grab active:cursor-grabbing group shadow-2xs"
-                    >
-                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-800">
-                        <span className="truncate">{preset.name}</span>
-                      </div>
-
-                      {/* Visual Thumbnail */}
-                      <div className="w-full bg-white rounded-lg p-1 flex items-center justify-center overflow-hidden border border-slate-200/80 h-16 pointer-events-none">
-                        <img
-                          src={svgData}
-                          alt={preset.name}
-                          draggable={false}
-                          className="max-h-14 w-auto object-contain pointer-events-none"
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between text-[10px] text-slate-500">
-                        <span>{preset.width}×{preset.height}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleInsertImageIntoBody(svgData, preset.name)}
-                          className="text-magenta-600 hover:underline font-semibold"
-                        >
-                          + Insert
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
 
           {/* Rich Body Canvas */}
           <div className="flex-1 min-h-0 flex flex-col p-2 sm:p-3 overflow-hidden">
