@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "jsx": "react-jsx",
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "outDir": "./dist/standalone/types",
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "src/index.ts",
+    "src/types.ts",
+    "src/components/**/*",
+    "src/extensions/**/*",
+    "src/utils/**/*",
+    "src/data/**/*"
+  ],
+  "exclude": [
+    "src/main.tsx",
+    "src/App.tsx",
+    "node_modules",
+    "dist"
+  ]
+}

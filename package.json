@@ -3,9 +3,23 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "./dist/standalone/rich-text-email-editor.cjs",
+  "module": "./dist/standalone/rich-text-email-editor.js",
+  "types": "./dist/standalone/types/index.d.ts",
+  "style": "./dist/standalone/rich-text-email-editor.css",
+  "exports": {
+    ".": {
+      "types": "./dist/standalone/types/index.d.ts",
+      "import": "./dist/standalone/rich-text-email-editor.js",
+      "require": "./dist/standalone/rich-text-email-editor.cjs"
+    },
+    "./style.css": "./dist/standalone/rich-text-email-editor.css"
+  },
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build:standalone": "vite build --config vite.config.lib.ts && tsc -p tsconfig.lib.json",
+    "build:all": "npm run build && npm run build:standalone",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"

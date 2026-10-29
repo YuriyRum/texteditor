@@ -11,12 +11,14 @@ import {
   Code2,
   FileArchive,
   ImageIcon,
+  Package,
 } from 'lucide-react';
 
 import { RichTextEmailEditor } from './components/RichTextEmailEditor';
 import { TemplateBuilder } from './components/TemplateBuilder/TemplateBuilder';
 import { ViewHtmlModal } from './components/ViewHtmlModal';
 import { SaveForOutlookModal } from './components/SaveForOutlookModal';
+import { StandaloneGuideModal } from './components/StandaloneGuideModal';
 import { EmailAttachment, AppMode, RichTextEmailEditorChangeData, TemplateImageObject } from './types';
 import { DEFAULT_ATTACHMENTS } from './data/defaultAttachments';
 
@@ -47,6 +49,7 @@ export default function App() {
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
   const [isViewHtmlOpen, setIsViewHtmlOpen] = useState(false);
   const [isSaveOutlookOpen, setIsSaveOutlookOpen] = useState(false);
+  const [isStandaloneGuideOpen, setIsStandaloneGuideOpen] = useState(false);
   const [copiedHtml, setCopiedHtml] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -206,6 +209,17 @@ export default function App() {
             </>
           )}
 
+          {/* Standalone Component Build & Export Guide */}
+          <button
+            type="button"
+            onClick={() => setIsStandaloneGuideOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg shadow-2xs transition-colors cursor-pointer"
+            title="Standalone RichTextEmailEditor: Build option, installation, and usage in other apps"
+          >
+            <Package className="w-3.5 h-3.5 text-magenta-600" />
+            <span className="hidden sm:inline">Standalone SDK</span>
+          </button>
+
           {appMode === 'builder' && (
             <button
               type="button"
@@ -298,6 +312,13 @@ export default function App() {
         onClose={() => setIsSaveOutlookOpen(false)}
         htmlContent={currentContent.html}
         images={currentContent.images}
+        onToast={showToast}
+      />
+
+      {/* Standalone Component Build & Export Guide Modal */}
+      <StandaloneGuideModal
+        isOpen={isStandaloneGuideOpen}
+        onClose={() => setIsStandaloneGuideOpen(false)}
         onToast={showToast}
       />
     </div>

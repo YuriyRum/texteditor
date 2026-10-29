@@ -1,3 +1,5 @@
+import './index.css';
+
 export { RichTextEmailEditor } from './components/RichTextEmailEditor';
 export type { RichTextEmailEditorProps } from './components/RichTextEmailEditor';
 export { Toolbar } from './components/Toolbar';
@@ -28,6 +30,7 @@ export {
 
 export { ViewHtmlModal } from './components/ViewHtmlModal';
 export { SaveForOutlookModal } from './components/SaveForOutlookModal';
+export { StandaloneGuideModal } from './components/StandaloneGuideModal';
 export { TemplateBuilder } from './components/TemplateBuilder/TemplateBuilder';
 export { adaptPastedEmailHtml } from './utils/pasteAdapter';
 
