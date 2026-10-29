@@ -104,3 +104,17 @@ export interface EmailTemplate {
   images?: TemplateImageObject[]; // Separate image objects referenced by the template
   updatedAt: string;
 }
+
+export interface RichTextEmailEditorChangeData {
+  /** Cleaned visual HTML with resolved inline images (data: URIs) */
+  html: string;
+  /** Plain text version of the email content */
+  text: string;
+  /** Outlook-prepared HTML containing src="cid:..." references for all inline images */
+  cidHtml: string;
+  /** Array of separate TemplateImageObject records corresponding to cid: references */
+  images: TemplateImageObject[];
+  /** Complete standalone Outlook-ready HTML document with MSO styling and CID references */
+  outlookHtml: string;
+}
+

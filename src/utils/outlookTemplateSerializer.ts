@@ -1,4 +1,5 @@
 import { EmailTemplate, TemplateImageObject } from '../types';
+import JSZip from 'jszip';
 
 const IMAGE_STORE_STORAGE_KEY = 'email_template_images_store';
 
@@ -279,15 +280,20 @@ export function resolveCidImagesInHtml(
     if (prefix) cidMap.set(prefix.toLowerCase(), img);
   });
 
-  return html.replace(/src=["']cid:([^"']+)["']/gi, (fullMatch, rawCid) => {
+  return html.replace(/src=["']?cid:([^"'\s>]+)["']?/gi, (fullMatch, rawCid) => {
     const cleanCid = rawCid.replace(/^<|>$/g, '').trim();
     const imgObj =
       cidMap.get(cleanCid) ||
       cidMap.get(cleanCid.toLowerCase()) ||
       cidMap.get(cleanCid.split('@')[0]?.toLowerCase());
 
-    if (imgObj && imgObj.base64Data) {
-      return `src="data:${imgObj.contentType};base64,${imgObj.base64Data}"`;
+    if (imgObj) {
+      if (imgObj.base64Data) {
+        const src = imgObj.base64Data.startsWith('data:') || imgObj.base64Data.startsWith('http') || imgObj.base64Data.startsWith('blob:')
+          ? imgObj.base64Data
+          : `data:${imgObj.contentType || 'image/png'};base64,${imgObj.base64Data}`;
+        return `src="${src}"`;
+      }
     }
     return fullMatch;
   });
@@ -471,11 +477,288 @@ ${cidHtml}
     );
   }
 
-  mimeLines.push(`--${boundary}--`, '');
-
   return {
     mhtContent: mimeLines.join('\r\n'),
     cidHtml,
     images,
   };
 }
+
+/**
+ * Wraps clean HTML into a complete, standalone Microsoft Outlook-compatible HTML document
+ * containing Word rendering declarations (xmlns:v, xmlns:o, xmlns:w), MSO allow PNG settings,
+ * default typography, and WordSection1 styling.
+ */
+export function wrapInOutlookDocument(params: {
+  subject?: string;
+  bodyHtml: string;
+}): string {
+  const title = (params.subject || 'Outlook Email')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  return `<!DOCTYPE html>
+<html xmlns:v="urn:schemas-microsoft-com:vml"
+      xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:w="urn:schemas-microsoft-com:office:word"
+      xmlns:m="http://schemas.microsoft.com/office/2004/12/omml"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta name="ProgId" content="Word.Document">
+<meta name="Generator" content="Microsoft Word 15">
+<meta name="Originator" content="Microsoft Word 15">
+<title>${title}</title>
+<!--[if gte mso 9]><xml>
+ <o:OfficeDocumentSettings>
+  <o:AllowPNG/>
+  <o:PixelsPerInch>96</o:PixelsPerInch>
+ </o:OfficeDocumentSettings>
+</xml><![endif]-->
+<style>
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: Calibri, "Segoe UI", Arial, sans-serif;
+    font-size: 11pt;
+    color: #1e293b;
+    line-height: 1.5;
+  }
+  table {
+    border-collapse: collapse;
+    mso-table-lspace: 0pt;
+    mso-table-rspace: 0pt;
+  }
+  img {
+    -ms-interpolation-mode: bicubic;
+    border: 0;
+    outline: none;
+    text-decoration: none;
+    display: inline-block;
+  }
+  p {
+    margin: 0 0 10px 0;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body lang="EN-US" link="#0078d4" vlink="#5c2d91" style="tab-interval:36.0pt;word-wrap:break-word">
+<div class="WordSection1">
+${params.bodyHtml}
+</div>
+</body>
+</html>`;
+}
+
+/**
+ * Converts a Base64 string into a Uint8Array byte array for binary file generation
+ */
+export function base64ToUint8Array(base64: string): Uint8Array {
+  const clean = base64.replace(/\s+/g, '');
+  const binaryString = atob(clean);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/**
+ * Triggers a browser file download from a Blob
+ */
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/**
+ * Downloads a single TemplateImageObject as an image file (.png, .jpg, .svg)
+ */
+export function downloadImageFile(image: TemplateImageObject): void {
+  if (!image.base64Data) return;
+  const bytes = base64ToUint8Array(image.base64Data);
+  const blob = new Blob([bytes], { type: image.contentType });
+  downloadBlob(blob, image.filename);
+}
+
+/**
+ * Creates a complete ZIP package containing:
+ *  - email.html (full Outlook HTML with cid: references)
+ *  - email_body.html (clean HTML body fragment with cid: references)
+ *  - images/ (separate image files with their filenames)
+ *  - images_manifest.json (metadata mapping cid -> file path & dimensions)
+ *  - README_OUTLOOK_INSTRUCTIONS.txt (Outlook, Python, C#, Node.js code recipes)
+ */
+export async function createOutlookZipBundle(params: {
+  subject?: string;
+  cidHtml: string;
+  images: TemplateImageObject[];
+}): Promise<Blob> {
+  const zip = new JSZip();
+  const subjectName = params.subject || 'Outlook Email';
+
+  // 1. Full Outlook HTML document
+  const fullHtml = wrapInOutlookDocument({
+    subject: subjectName,
+    bodyHtml: params.cidHtml,
+  });
+  zip.file('email.html', fullHtml);
+
+  // 2. Body fragment
+  zip.file('email_body.html', params.cidHtml);
+
+  // 3. Images folder with decoded binary image files
+  const imgFolder = zip.folder('images');
+  params.images.forEach((img) => {
+    if (img.base64Data && imgFolder) {
+      const bytes = base64ToUint8Array(img.base64Data);
+      imgFolder.file(img.filename, bytes, { binary: true });
+    }
+  });
+
+  // 4. Manifest JSON
+  const manifest = {
+    packageName: 'Outlook Email with Separate CID Images',
+    exportedAt: new Date().toISOString(),
+    subject: subjectName,
+    imageCount: params.images.length,
+    htmlFile: 'email.html',
+    imagesDirectory: 'images/',
+    images: params.images.map((img) => ({
+      cid: img.cid,
+      cidUrl: `cid:${img.cid}`,
+      filename: img.filename,
+      filePath: `images/${img.filename}`,
+      contentType: img.contentType,
+      sizeBytes: img.sizeBytes,
+      width: img.width,
+      height: img.height,
+    })),
+  };
+  zip.file('images_manifest.json', JSON.stringify(manifest, null, 2));
+
+  // 5. Code recipes and instructions
+  const sampleCid = params.images[0]?.cid || 'image001.png@01DA9F80.OUTLOOK';
+  const sampleFilename = params.images[0]?.filename || 'image001.png';
+  const sampleContentType = params.images[0]?.contentType || 'image/png';
+
+  const instructions = `================================================================================
+OUTLOOK EMAIL ARCHIVE (HTML + SEPARATE CID IMAGES)
+================================================================================
+Subject: ${subjectName}
+Extracted Images: ${params.images.length}
+Generated: ${new Date().toUTCString()}
+
+CONTENTS OF THIS PACKAGE:
+--------------------------------------------------------------------------------
+1. email.html               -> Complete Microsoft Word / Outlook compatible HTML
+                               document referencing inline images via src="cid:...".
+2. email_body.html          -> Inner HTML fragment ready for insertion into existing
+                               templates or email bodies.
+3. images/                  -> Directory containing each extracted image file as a
+                               standalone binary file (${params.images.map((i) => i.filename).join(', ') || 'none'}).
+4. images_manifest.json     -> Structured JSON metadata mapping each CID to its file,
+                               MIME content type, and pixel dimensions.
+
+IMAGE CID MAPPING:
+--------------------------------------------------------------------------------
+${params.images.length > 0 ? params.images.map((img, idx) => `[${idx + 1}] Filename: ${img.filename}\n    CID:      <${img.cid}>\n    HTML tag: <img src="cid:${img.cid}" width="${img.width || 'auto'}" height="${img.height || 'auto'}">\n    Type:     ${img.contentType} (${img.sizeBytes} bytes)\n`).join('\n') : 'No embedded images found in this email.\n'}
+
+HOW TO USE IN OUTLOOK & AUTOMATION SCRIPTS:
+--------------------------------------------------------------------------------
+
+A. OUTLOOK VBA (Desktop Outlook):
+---------------------------------
+Sub SendOutlookEmailWithCidImages()
+    Dim olApp As Object
+    Dim olMail As Object
+    Dim olAttach As Object
+    Dim fso As Object
+    Dim htmlText As String
+
+    Set olApp = CreateObject("Outlook.Application")
+    Set olMail = olApp.CreateItem(0) ' olMailItem
+
+    ' Read email.html
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    htmlText = fso.OpenTextFile(ThisWorkbook.Path & "\\email.html", 1).ReadAll
+
+    olMail.Subject = "${subjectName}"
+    olMail.HTMLBody = htmlText
+
+    ' Attach image with Content-ID (PR_ATTACH_CONTENT_ID = 0x3712001F)
+    ${params.images.map((img) => `Set olAttach = olMail.Attachments.Add(ThisWorkbook.Path & "\\images\\${img.filename}")\n    olAttach.PropertyAccessor.SetProperty "http://schemas.microsoft.com/mapi/proptag/0x3712001F", "${img.cid}"`).join('\n    ')}
+
+    olMail.Display ' or olMail.Send
+End Sub
+
+
+B. PYTHON (smtplib / email.mime):
+---------------------------------
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
+
+msg = MIMEMultipart('related')
+msg['Subject'] = "${subjectName}"
+msg['From'] = "sender@example.com"
+msg['To'] = "recipient@example.com"
+
+# Attach HTML body
+with open('email.html', 'r', encoding='utf-8') as f:
+    msg.attach(MIMEText(f.read(), 'html', 'utf-8'))
+
+# Attach CID images
+${params.images.map((img) => `with open('images/${img.filename}', 'rb') as f:
+    img_part = MIMEImage(f.read())
+    img_part.add_header('Content-ID', '<${img.cid}>')
+    img_part.add_header('Content-Disposition', 'inline', filename='${img.filename}')
+    msg.attach(img_part)`).join('\n\n')}
+
+
+C. C# (.NET MailMessage / MailKit):
+----------------------------------
+var mailMessage = new MailMessage();
+mailMessage.Subject = "${subjectName}";
+string htmlBody = File.ReadAllText("email.html");
+
+var avHtml = AlternateView.CreateAlternateViewFromString(htmlBody, null, "text/html");
+
+${params.images.map((img) => `var res_${img.filename.replace(/[^a-zA-Z0-9]/g, '_')} = new LinkedResource(@"images\\${img.filename}", "${img.contentType}") {
+    ContentId = "${img.cid}"
+};
+avHtml.LinkedResources.Add(res_${img.filename.replace(/[^a-zA-Z0-9]/g, '_')});`).join('\n\n')}
+
+mailMessage.AlternateViews.Add(avHtml);
+
+
+D. NODE.JS (Nodemailer):
+------------------------
+await transporter.sendMail({
+  from: '"Company" <sender@example.com>',
+  to: 'client@example.com',
+  subject: '${subjectName}',
+  html: fs.readFileSync('email.html', 'utf8'),
+  attachments: [
+    ${params.images.map((img) => `{
+      filename: '${img.filename}',
+      path: path.join(__dirname, 'images', '${img.filename}'),
+      cid: '${img.cid}'
+    }`).join(',\n    ')}
+  ]
+});
+`;
+
+  zip.file('README_OUTLOOK_INSTRUCTIONS.txt', instructions);
+
+  return await zip.generateAsync({ type: 'blob' });
+}
+

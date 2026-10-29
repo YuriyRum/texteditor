@@ -29,7 +29,14 @@ import {
 } from './ResizableImageNodeView';
 import { NodeSelection } from '@tiptap/pm/state';
 
-import { TablePreset, PredefinedText, EmailAttachment, TableBorderConfig } from '../types';
+import {
+  TablePreset,
+  PredefinedText,
+  EmailAttachment,
+  TableBorderConfig,
+  TemplateImageObject,
+  RichTextEmailEditorChangeData,
+} from '../types';
 import { DEFAULT_PREDEFINED_TEXTS } from '../data/defaultPredefinedTexts';
 import { DEFAULT_ATTACHMENTS } from '../data/defaultAttachments';
 import { AttachmentContextMenu } from './AttachmentContextMenu';
@@ -50,14 +57,24 @@ import {
   ParsedMhtResult,
 } from '../utils/mhtParser';
 import { isHtmlContent, wrapPlainTextInHtml } from '../utils/textToHtml';
+import {
+  extractImagesFromHtmlToCid,
+  resolveCidImagesInHtml,
+  wrapInOutlookDocument,
+} from '../utils/outlookTemplateSerializer';
 import { MhtEmailHeader } from './MhtEmailHeader';
 import { Upload, CheckCircle2 } from 'lucide-react';
 
+export { resolveCidImagesInHtml, extractImagesFromHtmlToCid };
+export type { RichTextEmailEditorChangeData };
+
 export interface RichTextEmailEditorProps {
-  /** Input parameter containing current HTML data, plain text, OR raw .mht/.mhtml email archive */
+  /** Input parameter containing current HTML data, plain text, raw .mht/.mhtml email archive, OR HTML with cid: references */
   value?: string;
   /** Fallback initial HTML data, plain text, or MHT content when value is not provided */
   defaultValue?: string;
+  /** Separate image objects referenced by cid: in the input HTML. When provided, cid: references will be reconstructed back to visual data URIs */
+  images?: TemplateImageObject[];
   /** Optional placeholder text */
   placeholder?: string;
   /** Additional container wrapper classes */
@@ -73,12 +90,14 @@ export interface RichTextEmailEditorProps {
   /** Input parameter containing array of available attachments ({ id, name, size, type }) */
   attachments?: EmailAttachment[];
 
-  /** Callback emitting both formatted HTML and pure text content whenever content updates */
-  onChange?: (data: { html: string; text: string }) => void;
-  /** Callback emitting formatted HTML content */
+  /** Callback emitting standard visual HTML, plain text, Outlook-prepared HTML with CID, separated image objects, and full Outlook HTML */
+  onChange?: (data: RichTextEmailEditorChangeData) => void;
+  /** Callback emitting formatted standard visual HTML content */
   onChangeHtml?: (html: string) => void;
   /** Callback emitting pure plain text content */
   onChangeText?: (text: string) => void;
+  /** Callback emitting Outlook-prepared HTML with cid: references and the array of separate images */
+  onChangeCidHtml?: (cidHtml: string, images: TemplateImageObject[]) => void;
 
   /** Optional callback providing direct access to the underlying Tiptap Editor instance */
   onEditorReady?: (editor: Editor) => void;
@@ -249,6 +268,7 @@ const ResizableImage = Image.extend({
 export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
   value,
   defaultValue = '',
+  images,
   placeholder = 'Compose your email body here...',
   className = '',
   minHeight = '420px',
@@ -258,6 +278,7 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
   onChange,
   onChangeHtml,
   onChangeText,
+  onChangeCidHtml,
   onEditorReady,
   onMhtLoaded,
 }) => {
@@ -314,7 +335,7 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
     editor.chain().focus().insertContent(` [${attachment.name}] `).run();
   };
 
-  // Determine initial content: if MHT -> parse, if HTML -> use, if plain text -> wrap in HTML
+  // Determine initial content: if MHT -> parse, if HTML with cid: -> reconstruct original visual HTML with resolved images, if HTML -> use, if plain text -> wrap in HTML
   const initialContent = useMemo(() => {
     const raw = value !== undefined ? value : defaultValue;
     if (!raw) return '';
@@ -322,23 +343,37 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
       const parsed = parseMht(raw);
       return parsed.html;
     }
-    if (isHtmlContent(raw)) {
-      return raw;
+
+    // If the developer provided HTML with cid: references and images (or images are in the store),
+    // reconstruct the original visual HTML with resolved data: URIs
+    let resolved = raw;
+    if (typeof resolved === 'string' && /cid:/i.test(resolved)) {
+      resolved = resolveCidImagesInHtml(resolved, images || []);
+    }
+
+    if (isHtmlContent(resolved)) {
+      return resolved;
     }
     // Text provided as an input must be shown wrapped in HTML
-    return wrapPlainTextInHtml(raw);
+    return wrapPlainTextInHtml(resolved);
   }, []);
 
   // Track controlled value ref to prevent redundant updates
   const isFirstRenderRef = useRef(true);
   const lastEmittedHtmlRef = useRef<string | null>(null);
+  const lastEmittedCidHtmlRef = useRef<string | null>(null);
+  const imagesPropRef = useRef(images);
+  imagesPropRef.current = images;
+
   const updateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onChangeRef = useRef(onChange);
   const onChangeHtmlRef = useRef(onChangeHtml);
   const onChangeTextRef = useRef(onChangeText);
+  const onChangeCidHtmlRef = useRef(onChangeCidHtml);
   onChangeRef.current = onChange;
   onChangeHtmlRef.current = onChangeHtml;
   onChangeTextRef.current = onChangeText;
+  onChangeCidHtmlRef.current = onChangeCidHtml;
 
   const emitEditorChanges = (currentEditor: Editor) => {
     if (currentEditor.isDestroyed) return;
@@ -348,12 +383,33 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
     const cleaned = cleanHtmlForOutlook(rawHtml, currentFont);
     lastEmittedHtmlRef.current = cleaned;
 
+    // Extract separate TemplateImageObject records and convert to Outlook-compatible cid: references
+    const { cidHtml, images: extractedImages } = extractImagesFromHtmlToCid(
+      cleaned,
+      imagesPropRef.current || []
+    );
+    lastEmittedCidHtmlRef.current = cidHtml;
+
+    // Generate complete standalone Outlook document
+    const fullOutlookHtml = wrapInOutlookDocument({
+      bodyHtml: cidHtml,
+    });
+
     const needsPlainText = Boolean(onChangeRef.current || onChangeTextRef.current);
     const pureText = needsPlainText ? convertHtmlToPlainText(rawHtml) : '';
 
-    onChangeRef.current?.({ html: cleaned, text: pureText });
+    const changeData: RichTextEmailEditorChangeData = {
+      html: cleaned,
+      text: pureText,
+      cidHtml,
+      images: extractedImages,
+      outlookHtml: fullOutlookHtml,
+    };
+
+    onChangeRef.current?.(changeData);
     onChangeHtmlRef.current?.(cleaned);
     onChangeTextRef.current?.(pureText);
+    onChangeCidHtmlRef.current?.(cidHtml, extractedImages);
   };
 
   const extensions = useMemo(
@@ -589,7 +645,7 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
     }
   }, [editor, onEditorReady]);
 
-  // Sync external controlled 'value' changes if updated outside
+  // Sync external controlled 'value' and 'images' changes if updated outside
   useEffect(() => {
     if (!editor || value === undefined) return;
     if (isFirstRenderRef.current) {
@@ -598,7 +654,7 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
     }
 
     // Short-circuit immediately if this value is what the editor just emitted
-    if (value === lastEmittedHtmlRef.current) {
+    if (value === lastEmittedHtmlRef.current || value === lastEmittedCidHtmlRef.current) {
       return;
     }
 
@@ -613,9 +669,16 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
       return;
     }
 
+    // If the developer provided HTML with cid: references and images (or images are in the store),
+    // reconstruct the original visual HTML with resolved data: URIs
+    let targetContent = value;
+    if (typeof targetContent === 'string' && /cid:/i.test(targetContent)) {
+      targetContent = resolveCidImagesInHtml(targetContent, images || []);
+    }
+
     // If text provided as an input is plain text, it must be shown wrapped in HTML
-    if (!isHtmlContent(value)) {
-      const wrapped = wrapPlainTextInHtml(value);
+    if (!isHtmlContent(targetContent)) {
+      const wrapped = wrapPlainTextInHtml(targetContent);
       const currentRaw = editor.getHTML();
       if (wrapped !== currentRaw) {
         editor.commands.setContent(wrapped);
@@ -627,13 +690,13 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
     }
 
     const currentRaw = editor.getHTML();
-    if (value !== currentRaw) {
-      editor.commands.setContent(value);
+    if (targetContent !== currentRaw) {
+      editor.commands.setContent(targetContent);
     }
     if (!readOnly && !editor.isEditable) {
       editor.setEditable(true);
     }
-  }, [value, editor, onMhtLoaded, readOnly]);
+  }, [value, images, editor, onMhtLoaded, readOnly]);
 
   // Ensure editor is editable in any case
   useEffect(() => {

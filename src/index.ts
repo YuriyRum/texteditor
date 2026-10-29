@@ -27,6 +27,16 @@ export {
 } from './utils/textToHtml';
 
 export { ViewHtmlModal } from './components/ViewHtmlModal';
+export { SaveForOutlookModal } from './components/SaveForOutlookModal';
+export { TemplateBuilder } from './components/TemplateBuilder/TemplateBuilder';
 export { adaptPastedEmailHtml } from './utils/pasteAdapter';
 
+export {
+  extractImagesFromHtmlToCid,
+  resolveCidImagesInHtml,
+  wrapInOutlookDocument,
+  createOutlookZipBundle,
+} from './utils/outlookTemplateSerializer';
+
 export * from './types';
+

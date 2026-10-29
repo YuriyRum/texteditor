@@ -27,6 +27,7 @@ import {
   Superscript as SuperscriptIcon,
   AlertCircle,
   FileText,
+  ImageIcon,
 } from 'lucide-react';
 
 import { EMAIL_FONTS, FONT_SIZES, COLOR_PALETTE } from '../utils/outlookFormatter';
@@ -52,6 +53,20 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const [selectionNotice, setSelectionNotice] = useState<string | null>(null);
 
   const lastSelectionRef = useRef<{ from: number; to: number } | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !editor) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        editor.chain().focus().setImage({ src: reader.result, alt: file.name }).run();
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   // Keep track of non-empty text selections
   useEffect(() => {
@@ -536,6 +551,24 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         >
           <Link2 className="w-4 h-4" />
         </button>
+
+        {/* Insert Image Button */}
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => imageInputRef.current?.click()}
+          className="p-1.5 rounded hover:bg-slate-100 text-slate-700 cursor-pointer"
+          title="Insert Image (PNG, JPG, SVG, WebP)"
+        >
+          <ImageIcon className="w-4 h-4 text-slate-600" />
+        </button>
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleImageUpload}
+          className="hidden"
+        />
 
         <button
           type="button"

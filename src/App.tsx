@@ -9,12 +9,15 @@ import {
   Copy,
   Check,
   Code2,
+  FileArchive,
+  ImageIcon,
 } from 'lucide-react';
 
 import { RichTextEmailEditor } from './components/RichTextEmailEditor';
 import { TemplateBuilder } from './components/TemplateBuilder/TemplateBuilder';
 import { ViewHtmlModal } from './components/ViewHtmlModal';
-import { EmailAttachment, AppMode } from './types';
+import { SaveForOutlookModal } from './components/SaveForOutlookModal';
+import { EmailAttachment, AppMode, RichTextEmailEditorChangeData, TemplateImageObject } from './types';
 import { DEFAULT_ATTACHMENTS } from './data/defaultAttachments';
 
 export default function App() {
@@ -33,13 +36,17 @@ export default function App() {
   `;
 
   // State holding current content emitted by the reusable editor callbacks
-  const [currentContent, setCurrentContent] = useState<{ html: string; text: string }>({
+  const [currentContent, setCurrentContent] = useState<RichTextEmailEditorChangeData>({
     html: defaultInitialContent,
     text: 'Welcome to the Rich Text Email Editor\nUse the rich toolbar above to format text...',
+    cidHtml: defaultInitialContent,
+    images: [],
+    outlookHtml: defaultInitialContent,
   });
 
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
   const [isViewHtmlOpen, setIsViewHtmlOpen] = useState(false);
+  const [isSaveOutlookOpen, setIsSaveOutlookOpen] = useState(false);
   const [copiedHtml, setCopiedHtml] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -47,6 +54,13 @@ export default function App() {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
+
+  // Count embedded <img> tags in current content
+  const embeddedImageCount = useMemo(() => {
+    if (!currentContent.html) return 0;
+    const matches = currentContent.html.match(/<img\b/gi);
+    return matches ? matches.length : 0;
+  }, [currentContent.html]);
 
   // Word & character stats
   const wordCount = useMemo(() => {
@@ -57,18 +71,21 @@ export default function App() {
   const charCount = currentContent.text.length;
 
   // Called when user clicks "Apply to Editor" inside Template Builder
-  const handleUseTemplateInEditor = (template: { subject: string; html: string }) => {
+  const handleUseTemplateInEditor = (template: {
+    subject: string;
+    html: string;
+    images?: TemplateImageObject[];
+  }) => {
     setCurrentContent({
       html: template.html,
       text: template.html.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim(),
+      cidHtml: template.html,
+      images: template.images || [],
+      outlookHtml: template.html,
     });
 
-    if (editorInstance) {
-      editorInstance.commands.setContent(template.html);
-    }
-
     setAppMode('editor');
-    showToast('Template loaded into editor! You can now customize and review.');
+    showToast('Template loaded into editor! Reconstructed visual images from CID references.');
   };
 
   const handleCopyHtml = async () => {
@@ -142,6 +159,22 @@ export default function App() {
         <div className="flex items-center gap-2">
           {appMode === 'editor' && (
             <>
+              {/* Save HTML & Embedded Images for Outlook (CID) */}
+              <button
+                type="button"
+                onClick={() => setIsSaveOutlookOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-magenta-600 hover:bg-magenta-700 text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
+                title="Save HTML and separate images with cid: references for Outlook compatibility"
+              >
+                <FileArchive className="w-3.5 h-3.5" />
+                <span>Save for Outlook (CID)</span>
+                {embeddedImageCount > 0 && (
+                  <span className="bg-magenta-800 text-magenta-100 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                    {embeddedImageCount}
+                  </span>
+                )}
+              </button>
+
               <button
                 type="button"
                 onClick={handleCopyHtml}
@@ -196,6 +229,7 @@ export default function App() {
           {/* Reusable RichTextEmailEditor Component with Text Wrapping, Toolbar, & MHT support */}
           <RichTextEmailEditor
             value={currentContent.html}
+            images={currentContent.images}
             attachments={attachmentsList}
             minHeight="100%"
             onChange={(data) => {
@@ -209,13 +243,39 @@ export default function App() {
 
           {/* Word & Character Statistics Bar */}
           <div className="bg-white rounded-xl border border-slate-200 px-4 py-2 flex items-center justify-between text-xs text-slate-500 font-medium shadow-2xs shrink-0 flex-wrap gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span>{wordCount} words</span>
               <span className="text-slate-300">•</span>
               <span>{charCount} characters</span>
+              {embeddedImageCount > 0 && (
+                <>
+                  <span className="text-slate-300">•</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsSaveOutlookOpen(true)}
+                    className="inline-flex items-center gap-1 text-magenta-700 hover:text-magenta-900 font-semibold cursor-pointer"
+                    title="Click to view and save separate CID images for Outlook"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5 text-magenta-600" />
+                    <span>
+                      {embeddedImageCount} embedded {embeddedImageCount === 1 ? 'image' : 'images'} (ready for CID)
+                    </span>
+                  </button>
+                </>
+              )}
             </div>
 
             <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsSaveOutlookOpen(true)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-magenta-50 hover:bg-magenta-100 text-magenta-700 border border-magenta-200 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                title="Save HTML and separate images with cid: references for Outlook compatibility"
+              >
+                <FileArchive className="w-3.5 h-3.5 text-magenta-600" />
+                <span>Save HTML &amp; Images</span>
+              </button>
+
               <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-slate-400">
                 <Upload className="w-3.5 h-3.5 text-magenta-500" />
                 <span>Tip: Drag & drop <code>.mht</code>, <code>.mhtml</code>, or <code>.txt</code> files directly onto the canvas</span>
@@ -230,6 +290,15 @@ export default function App() {
         isOpen={isViewHtmlOpen}
         onClose={() => setIsViewHtmlOpen(false)}
         htmlContent={currentContent.html}
+      />
+
+      {/* Save for Outlook Modal (HTML and Embedded Images Separated with CID References) */}
+      <SaveForOutlookModal
+        isOpen={isSaveOutlookOpen}
+        onClose={() => setIsSaveOutlookOpen(false)}
+        htmlContent={currentContent.html}
+        images={currentContent.images}
+        onToast={showToast}
       />
     </div>
   );

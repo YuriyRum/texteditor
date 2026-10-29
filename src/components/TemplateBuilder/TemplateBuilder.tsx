@@ -38,12 +38,21 @@ import { SubjectBuilder } from './SubjectBuilder';
 import { RichTextEmailEditor } from '../RichTextEmailEditor';
 import { InsertPlaceholderModal } from '../InsertPlaceholderModal';
 
+import { TemplateImageObject } from '../../types';
+
 interface TemplateBuilderProps {
-  onUseTemplateInEditor?: (template: { subject: string; html: string }) => void;
+  onUseTemplateInEditor?: (template: {
+    subject: string;
+    html: string;
+    images?: TemplateImageObject[];
+  }) => void;
   onBackToEditor?: () => void;
 }
 
-export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
+export const TemplateBuilder: React.FC<TemplateBuilderProps> = ({
+  onUseTemplateInEditor,
+  onBackToEditor,
+}) => {
   // Saved templates state (normalized so images are stored separately and referenced via cid:)
   const [templates, setTemplates] = useState<EmailTemplate[]>(() => {
     const saved = localStorage.getItem('email_templates');
@@ -540,8 +549,30 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
           </div>
         </div>
 
-        {/* Right: Actions (Save) */}
+        {/* Right: Actions (Use in Editor, Save) */}
         <div className="flex items-center gap-2">
+          {onUseTemplateInEditor && (
+            <button
+              type="button"
+              onClick={() => {
+                const latestHtml = getLatestBodyHtml();
+                const { cidHtml, images } = extractImagesFromHtmlToCid(
+                  latestHtml,
+                  currentTemplate?.images || []
+                );
+                onUseTemplateInEditor({
+                  subject,
+                  html: cidHtml,
+                  images,
+                });
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors shadow-2xs cursor-pointer"
+              title="Apply this template (HTML with CID & separate images) to the Standard Editor"
+            >
+              <span>Use in Editor</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleSaveTemplate}
@@ -795,6 +826,7 @@ export const TemplateBuilder: React.FC<TemplateBuilderProps> = () => {
           <div className="flex-1 min-h-0 flex flex-col p-2 sm:p-3 overflow-hidden">
             <RichTextEmailEditor
               value={bodyHtml}
+              images={currentTemplate?.images}
               predefinedTexts={[]}
               onChangeHtml={setBodyHtml}
               onEditorReady={setEditorInstance}
