@@ -492,10 +492,20 @@ ${cidHtml}
 export function wrapInOutlookDocument(params: {
   subject?: string;
   bodyHtml: string;
+  webFontUrls?: string[];
 }): string {
   const title = (params.subject || 'Outlook Email')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+
+  const fontLinks = (params.webFontUrls || [])
+    .filter(Boolean)
+    .map(
+      (url) => `<!--[if !mso]><!-->
+<link rel="stylesheet" href="${url}">
+<!--<![endif]-->`
+    )
+    .join('\n');
 
   return `<!DOCTYPE html>
 <html xmlns:v="urn:schemas-microsoft-com:vml"
@@ -509,6 +519,7 @@ export function wrapInOutlookDocument(params: {
 <meta name="Generator" content="Microsoft Word 15">
 <meta name="Originator" content="Microsoft Word 15">
 <title>${title}</title>
+${fontLinks}
 <!--[if gte mso 9]><xml>
  <o:OfficeDocumentSettings>
   <o:AllowPNG/>

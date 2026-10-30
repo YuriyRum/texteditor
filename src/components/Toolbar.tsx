@@ -28,10 +28,11 @@ import {
   AlertCircle,
   FileText,
   ImageIcon,
+  Plus,
 } from 'lucide-react';
 
 import { EMAIL_FONTS, FONT_SIZES, COLOR_PALETTE } from '../utils/outlookFormatter';
-import { PredefinedText } from '../types';
+import { PredefinedText, FontOption } from '../types';
 
 interface ToolbarProps {
   editor: Editor | null;
@@ -39,6 +40,8 @@ interface ToolbarProps {
   onOpenTableModal: () => void;
   onOpenLinkModal: () => void;
   predefinedTexts?: PredefinedText[];
+  fonts?: FontOption[];
+  onOpenCustomFontsModal?: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -47,6 +50,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onOpenTableModal,
   onOpenLinkModal,
   predefinedTexts = [],
+  fonts = EMAIL_FONTS,
+  onOpenCustomFontsModal,
 }) => {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showHighlightPicker, setShowHighlightPicker] = useState(false);
@@ -125,6 +130,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
 
   const handleFontFamilyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const family = e.target.value;
+    if (family === '__ADD_CUSTOM_FONT__') {
+      onOpenCustomFontsModal?.();
+      e.target.value = currentFontFamily;
+      return;
+    }
     runOnSelection((chain) => {
       chain.setFontFamily(family).run();
     });
@@ -175,7 +185,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       )}
 
       {/* Font Family Selector */}
-      <div className="flex items-center gap-1 bg-slate-50 p-1 rounded-md border border-slate-200">
+      <div className="flex items-center gap-0.5 bg-slate-50 p-1 rounded-md border border-slate-200">
         <Type className="w-3.5 h-3.5 text-slate-400 pl-0.5" />
         <select
           value={currentFontFamily}
@@ -183,12 +193,27 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           className="bg-transparent text-xs text-slate-800 font-medium focus:outline-none cursor-pointer max-w-[130px] truncate"
           title="Font Family (Applies to selected text)"
         >
-          {EMAIL_FONTS.map((font) => (
+          {fonts.map((font) => (
             <option key={font.name} value={font.family} style={{ fontFamily: font.family }}>
-              {font.name}
+              {font.isCustom ? `★ ${font.name}` : font.name}
             </option>
           ))}
+          {onOpenCustomFontsModal && (
+            <option value="__ADD_CUSTOM_FONT__" className="text-magenta-600 font-bold">
+              + Add Custom Font...
+            </option>
+          )}
         </select>
+        {onOpenCustomFontsModal && (
+          <button
+            type="button"
+            onClick={onOpenCustomFontsModal}
+            className="p-0.5 text-slate-400 hover:text-magenta-600 hover:bg-magenta-50 rounded transition-colors"
+            title="Manage / Add Custom Fonts (Google Fonts & Web Fonts)"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       {/* Font Size Selector */}

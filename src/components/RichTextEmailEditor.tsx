@@ -36,6 +36,7 @@ import {
   TableBorderConfig,
   TemplateImageObject,
   RichTextEmailEditorChangeData,
+  FontOption,
 } from '../types';
 import { DEFAULT_PREDEFINED_TEXTS } from '../data/defaultPredefinedTexts';
 import { DEFAULT_ATTACHMENTS } from '../data/defaultAttachments';
@@ -48,6 +49,10 @@ import {
 import {
   cleanHtmlForOutlook,
   convertHtmlToPlainText,
+  EMAIL_FONTS,
+  loadStoredCustomFonts,
+  saveStoredCustomFonts,
+  loadWebFont,
 } from '../utils/outlookFormatter';
 import { adaptPastedEmailHtml } from '../utils/pasteAdapter';
 import {
@@ -63,6 +68,7 @@ import {
   wrapInOutlookDocument,
 } from '../utils/outlookTemplateSerializer';
 import { MhtEmailHeader } from './MhtEmailHeader';
+import { AddCustomFontModal } from './AddCustomFontModal';
 import { Upload, CheckCircle2 } from 'lucide-react';
 
 export { resolveCidImagesInHtml, extractImagesFromHtmlToCid };
@@ -89,6 +95,13 @@ export interface RichTextEmailEditorProps {
 
   /** Input parameter containing array of available attachments ({ id, name, size, type }) */
   attachments?: EmailAttachment[];
+
+  /** Optional custom fonts to include in the font dropdown (alongside standard Outlook-safe fonts) */
+  customFonts?: FontOption[];
+  /** Optional full override of available font options */
+  fontOptions?: FontOption[];
+  /** Callback triggered when custom fonts are added or removed in the UI */
+  onCustomFontsChange?: (fonts: FontOption[]) => void;
 
   /** Callback emitting standard visual HTML, plain text, Outlook-prepared HTML with CID, separated image objects, and full Outlook HTML */
   onChange?: (data: RichTextEmailEditorChangeData) => void;
@@ -275,6 +288,9 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
   readOnly = false,
   predefinedTexts = DEFAULT_PREDEFINED_TEXTS,
   attachments = DEFAULT_ATTACHMENTS,
+  customFonts,
+  fontOptions,
+  onCustomFontsChange,
   onChange,
   onChangeHtml,
   onChangeText,
@@ -285,6 +301,57 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
   const [isInTable, setIsInTable] = useState(false);
   const [isTableModalOpen, setIsTableModalOpen] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [isCustomFontModalOpen, setIsCustomFontModalOpen] = useState(false);
+
+  // Custom fonts state (persisted in localStorage + merged with prop customFonts)
+  const [storedFonts, setStoredFonts] = useState<FontOption[]>(() => {
+    return loadStoredCustomFonts();
+  });
+
+  const allFonts = useMemo<FontOption[]>(() => {
+    if (fontOptions && fontOptions.length > 0) {
+      return fontOptions;
+    }
+    const propCustom = customFonts || [];
+    const combinedCustom = [...propCustom];
+    for (const sf of storedFonts) {
+      if (!combinedCustom.some((cf) => cf.family.toLowerCase() === sf.family.toLowerCase())) {
+        combinedCustom.push(sf);
+      }
+    }
+    return [...EMAIL_FONTS, ...combinedCustom];
+  }, [fontOptions, customFonts, storedFonts]);
+
+  // Dynamically load web fonts (e.g. Google Fonts) into document head so editor renders them immediately
+  useEffect(() => {
+    allFonts.forEach((f) => {
+      if (f.webFontUrl) {
+        loadWebFont(f.webFontUrl);
+      }
+    });
+  }, [allFonts]);
+
+  const handleAddCustomFont = (newFont: FontOption) => {
+    const updated = [
+      ...storedFonts.filter((f) => f.family.toLowerCase() !== newFont.family.toLowerCase()),
+      newFont,
+    ];
+    setStoredFonts(updated);
+    saveStoredCustomFonts(updated);
+    onCustomFontsChange?.(updated);
+    if (newFont.webFontUrl) {
+      loadWebFont(newFont.webFontUrl);
+    }
+  };
+
+  const handleRemoveCustomFont = (fontFamily: string) => {
+    const updated = storedFonts.filter(
+      (f) => f.family.toLowerCase() !== fontFamily.toLowerCase()
+    );
+    setStoredFonts(updated);
+    saveStoredCustomFonts(updated);
+    onCustomFontsChange?.(updated);
+  };
 
   // MHT Metadata state (subject, from, to, date, etc.)
   const [mhtMetadata, setMhtMetadata] = useState<ParsedMhtResult | null>(() => {
@@ -390,9 +457,15 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
     );
     lastEmittedCidHtmlRef.current = cidHtml;
 
+    // Gather active web font URLs for email client inclusion
+    const webFontUrls = allFonts
+      .map((f) => f.webFontUrl)
+      .filter((url): url is string => Boolean(url));
+
     // Generate complete standalone Outlook document
     const fullOutlookHtml = wrapInOutlookDocument({
       bodyHtml: cidHtml,
+      webFontUrls,
     });
 
     const needsPlainText = Boolean(onChangeRef.current || onChangeTextRef.current);
@@ -929,6 +1002,8 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
             onOpenTableModal={() => setIsTableModalOpen(true)}
             onOpenLinkModal={() => setIsLinkModalOpen(true)}
             predefinedTexts={predefinedTexts}
+            fonts={allFonts}
+            onOpenCustomFontsModal={() => setIsCustomFontModalOpen(true)}
           />
           {isInTable && (
             <TableControls
@@ -1030,6 +1105,15 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
                 ' '
               ) || ''
         }
+      />
+
+      {/* Custom Font Manager Modal */}
+      <AddCustomFontModal
+        isOpen={isCustomFontModalOpen}
+        onClose={() => setIsCustomFontModalOpen(false)}
+        customFonts={allFonts.filter((f) => f.isCustom)}
+        onAddFont={handleAddCustomFont}
+        onRemoveFont={handleRemoveCustomFont}
       />
     </div>
   );

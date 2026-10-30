@@ -7,6 +7,8 @@ export type FontOption = {
   family: string;
   category: 'sans-serif' | 'serif' | 'monospace' | 'cursive';
   isOutlookDefault?: boolean;
+  isCustom?: boolean;
+  webFontUrl?: string;
 };
 
 export type FontSizeOption = {

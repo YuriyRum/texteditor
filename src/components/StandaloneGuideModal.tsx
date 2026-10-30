@@ -46,11 +46,23 @@ npm install ./rich-text-email-editor-0.0.0.tgz`;
   const codeExample = `import React, { useState } from 'react';
 import { 
   RichTextEmailEditor, 
-  RichTextEmailEditorChangeData 
+  RichTextEmailEditorChangeData,
+  FontOption 
 } from 'rich-text-email-editor';
 
 // Import bundled styles (Tailwind, ProseMirror, tables, resizable images)
 import 'rich-text-email-editor/style.css';
+
+// Optional: Provide custom brand or Google Fonts (with Outlook safe fallbacks)
+const CUSTOM_BRAND_FONTS: FontOption[] = [
+  {
+    name: 'Poppins',
+    family: "'Poppins', Arial, sans-serif",
+    category: 'sans-serif',
+    isCustom: true,
+    webFontUrl: 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap',
+  },
+];
 
 export function EmailComposer() {
   const [editorData, setEditorData] = useState<RichTextEmailEditorChangeData | null>(null);
@@ -59,6 +71,7 @@ export function EmailComposer() {
     <div style={{ maxWidth: 840, margin: '20px auto', height: 600 }}>
       <RichTextEmailEditor
         placeholder="Compose your email..."
+        customFonts={CUSTOM_BRAND_FONTS}
         // Pass existing CID HTML + images to reconstruct visual view:
         value={editorData?.cidHtml}
         images={editorData?.images}
@@ -67,13 +80,13 @@ export function EmailComposer() {
           // data.cidHtml -> Outlook-ready HTML with src="cid:..."
           // data.images -> Separate image files for MIME attachment
           // data.text -> Plain text body
-          // data.outlookHtml -> Complete MSO email document
+          // data.outlookHtml -> Complete MSO email document with web fonts & fallbacks
           setEditorData(data);
         }}
       />
     </div>
   );
-}`;
+};`;
 
   return (
     <div

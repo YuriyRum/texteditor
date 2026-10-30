@@ -79,10 +79,21 @@ export default function MyEmailPage() {
         value={content.html}
         images={content.images}
         placeholder="Compose message..."
+        // Custom fonts (Google Fonts or corporate fonts with Outlook fallbacks)
+        customFonts={[
+          {
+            name: 'Poppins',
+            family: "'Poppins', Arial, sans-serif",
+            category: 'sans-serif',
+            isCustom: true,
+            webFontUrl: 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap',
+          },
+        ]}
         onChange={(data) => {
           console.log('Visual HTML:', data.html);
           console.log('Outlook CID HTML:', data.cidHtml);
           console.log('Extracted Images:', data.images);
+          console.log('Standalone Outlook HTML:', data.outlookHtml);
           setContent(data);
         }}
       />
@@ -90,6 +101,28 @@ export default function MyEmailPage() {
   );
 }
 ```
+
+---
+
+## 🎨 4. Custom Fonts & Typography
+
+You can add custom fonts in two ways:
+
+1. **Interactive UI**: Users can click the **`+`** icon next to the Font Family dropdown in the toolbar or select **`+ Add Custom Font...`** to open the built-in Custom Font Manager. They can 1-click add popular Google Fonts (Poppins, Inter, Montserrat, Roboto, Playfair Display, Merriweather, etc.) or add any brand font name with fallback fonts. Custom fonts are persisted in browser `localStorage`.
+2. **Component Props**: Pass the `customFonts` prop:
+```tsx
+<RichTextEmailEditor
+  customFonts={[
+    {
+      name: 'Brand Grotesk',
+      family: "'Brand Grotesk', 'Segoe UI', Arial, sans-serif",
+      category: 'sans-serif',
+      webFontUrl: 'https://cdn.example.com/fonts/brand-grotesk.css', // optional
+    }
+  ]}
+/>
+```
+Outlook compatibility: When exporting or sending, Outlook desktop on Windows falls back cleanly to the safe system font in the font stack (e.g. `Arial` or `'Segoe UI'`), while webmail and mobile clients display the custom web font.
 
 ---
 

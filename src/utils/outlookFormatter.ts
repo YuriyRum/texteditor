@@ -14,6 +14,112 @@ export const EMAIL_FONTS: FontOption[] = [
   { name: 'Comic Sans MS', family: '"Comic Sans MS", "Comic Sans", cursive', category: 'cursive' },
 ];
 
+export const PRESET_POPULAR_GOOGLE_FONTS: FontOption[] = [
+  {
+    name: 'Poppins',
+    family: "'Poppins', Arial, sans-serif",
+    category: 'sans-serif',
+    isCustom: true,
+    webFontUrl: 'https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap',
+  },
+  {
+    name: 'Montserrat',
+    family: "'Montserrat', Arial, sans-serif",
+    category: 'sans-serif',
+    isCustom: true,
+    webFontUrl: 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap',
+  },
+  {
+    name: 'Inter',
+    family: "'Inter', Arial, sans-serif",
+    category: 'sans-serif',
+    isCustom: true,
+    webFontUrl: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap',
+  },
+  {
+    name: 'Roboto',
+    family: "'Roboto', Arial, sans-serif",
+    category: 'sans-serif',
+    isCustom: true,
+    webFontUrl: 'https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap',
+  },
+  {
+    name: 'Open Sans',
+    family: "'Open Sans', Arial, sans-serif",
+    category: 'sans-serif',
+    isCustom: true,
+    webFontUrl: 'https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap',
+  },
+  {
+    name: 'Lato',
+    family: "'Lato', Arial, sans-serif",
+    category: 'sans-serif',
+    isCustom: true,
+    webFontUrl: 'https://fonts.googleapis.com/css2?family=Lato:wght@400;700&display=swap',
+  },
+  {
+    name: 'Playfair Display',
+    family: "'Playfair Display', Georgia, serif",
+    category: 'serif',
+    isCustom: true,
+    webFontUrl: 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&display=swap',
+  },
+  {
+    name: 'Merriweather',
+    family: "'Merriweather', Georgia, serif",
+    category: 'serif',
+    isCustom: true,
+    webFontUrl: 'https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&display=swap',
+  },
+  {
+    name: 'Fira Code',
+    family: "'Fira Code', 'Courier New', monospace",
+    category: 'monospace',
+    isCustom: true,
+    webFontUrl: 'https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap',
+  },
+  {
+    name: 'Great Vibes (Script)',
+    family: "'Great Vibes', 'Brush Script MT', cursive",
+    category: 'cursive',
+    isCustom: true,
+    webFontUrl: 'https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap',
+  },
+];
+
+export const CUSTOM_FONTS_STORAGE_KEY = 'rte_custom_email_fonts';
+
+export function loadStoredCustomFonts(): FontOption[] {
+  try {
+    if (typeof localStorage === 'undefined') return [];
+    const raw = localStorage.getItem(CUSTOM_FONTS_STORAGE_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+export function saveStoredCustomFonts(fonts: FontOption[]): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(CUSTOM_FONTS_STORAGE_KEY, JSON.stringify(fonts));
+  } catch (e) {
+    console.error('Failed to save custom fonts:', e);
+  }
+}
+
+export function loadWebFont(url?: string): void {
+  if (!url || typeof document === 'undefined') return;
+  const existing = document.querySelector(`link[href="${url}"]`);
+  if (existing) return;
+
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = url;
+  document.head.appendChild(link);
+}
+
 export const FONT_SIZES: FontSizeOption[] = [
   { label: '9 pt (8px)', value: '9pt', ptValue: '9pt' },
   { label: '10 pt (13px)', value: '10pt', ptValue: '10pt' },

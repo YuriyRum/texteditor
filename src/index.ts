@@ -18,6 +18,10 @@ export {
   convertHtmlToPlainText,
   copyRichTextToClipboard,
   EMAIL_FONTS,
+  PRESET_POPULAR_GOOGLE_FONTS,
+  loadWebFont,
+  loadStoredCustomFonts,
+  saveStoredCustomFonts,
   FONT_SIZES,
   COLOR_PALETTE,
 } from './utils/outlookFormatter';
@@ -31,6 +35,7 @@ export {
 export { ViewHtmlModal } from './components/ViewHtmlModal';
 export { SaveForOutlookModal } from './components/SaveForOutlookModal';
 export { StandaloneGuideModal } from './components/StandaloneGuideModal';
+export { AddCustomFontModal } from './components/AddCustomFontModal';
 export { TemplateBuilder } from './components/TemplateBuilder/TemplateBuilder';
 export { adaptPastedEmailHtml } from './utils/pasteAdapter';
 
