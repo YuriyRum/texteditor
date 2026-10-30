@@ -4,6 +4,12 @@ export const EMAIL_FONTS: FontOption[] = [
   { name: 'Calibri (Outlook Default)', family: 'Calibri, sans-serif', category: 'sans-serif', isOutlookDefault: true },
   { name: 'Aptos (New Outlook Default)', family: 'Aptos, Calibri, sans-serif', category: 'sans-serif', isOutlookDefault: true },
   { name: 'Segoe UI (Windows)', family: '"Segoe UI", Tahoma, Geneva, Verdana, sans-serif', category: 'sans-serif', isOutlookDefault: true },
+  {
+    name: 'TeleNeo Office',
+    family: "'TeleNeo Office', Calibri, Arial, sans-serif",
+    category: 'sans-serif',
+    webFontUrl: 'https://fonts.cdnfonts.com/css/teleneo-office',
+  },
   { name: 'Arial', family: 'Arial, Helvetica, sans-serif', category: 'sans-serif' },
   { name: 'Georgia', family: 'Georgia, serif', category: 'serif' },
   { name: 'Times New Roman', family: '"Times New Roman", Times, serif', category: 'serif' },

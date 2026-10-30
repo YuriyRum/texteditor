@@ -319,7 +319,15 @@ export const RichTextEmailEditor: React.FC<RichTextEmailEditorProps> = ({
         combinedCustom.push(sf);
       }
     }
-    return [...EMAIL_FONTS, ...combinedCustom];
+    const filteredCustom = combinedCustom.filter(
+      (cf) =>
+        !EMAIL_FONTS.some(
+          (ef) =>
+            ef.family.toLowerCase() === cf.family.toLowerCase() ||
+            ef.name.toLowerCase() === cf.name.toLowerCase()
+        )
+    );
+    return [...EMAIL_FONTS, ...filteredCustom];
   }, [fontOptions, customFonts, storedFonts]);
 
   // Dynamically load web fonts (e.g. Google Fonts) into document head so editor renders them immediately

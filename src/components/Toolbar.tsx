@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Editor } from '@tiptap/react';
 import {
   Bold,
@@ -128,6 +128,23 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   const currentFontFamily = editor.getAttributes('textStyle').fontFamily || 'Calibri';
   const currentFontSize = editor.getAttributes('textStyle').fontSize || '11pt';
 
+  const matchedFontFamily = useMemo(() => {
+    if (!currentFontFamily) return fonts[0]?.family || '';
+    const norm = currentFontFamily.replace(/['"]/g, '').toLowerCase().trim();
+    const found = fonts.find((f) => {
+      const fNorm = f.family.replace(/['"]/g, '').toLowerCase().trim();
+      const nameNorm = f.name.replace(/['"]/g, '').toLowerCase().trim();
+      return (
+        fNorm === norm ||
+        nameNorm === norm ||
+        norm.startsWith(nameNorm) ||
+        fNorm.startsWith(norm) ||
+        norm.includes(nameNorm)
+      );
+    });
+    return found ? found.family : currentFontFamily;
+  }, [currentFontFamily, fonts]);
+
   const handleFontFamilyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const family = e.target.value;
     if (family === '__ADD_CUSTOM_FONT__') {
@@ -188,7 +205,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       <div className="flex items-center gap-0.5 bg-slate-50 p-1 rounded-md border border-slate-200">
         <Type className="w-3.5 h-3.5 text-slate-400 pl-0.5" />
         <select
-          value={currentFontFamily}
+          value={matchedFontFamily}
           onChange={handleFontFamilyChange}
           className="bg-transparent text-xs text-slate-800 font-medium focus:outline-none cursor-pointer max-w-[130px] truncate"
           title="Font Family (Applies to selected text)"
